@@ -76,6 +76,7 @@ cdef extern from "duktape_c/duktape.h":
     duk_idx_t duk_push_c_function(duk_context *ctx, duk_c_function func, duk_idx_t nargs)
     void duk_push_current_function(duk_context *ctx)
     void duk_push_false(duk_context *ctx)
+    void duk_push_context_dump(duk_context *ctx)
     void duk_push_global_object(duk_context *ctx)
     void duk_push_global_stash(duk_context *ctx)
     void duk_push_heap_stash(duk_context *ctx)

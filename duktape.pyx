@@ -21,6 +21,16 @@ cdef smart_str(s):
     return s.encode("utf-8") if isinstance(s, unicode) else s
 
 
+cdef duk_context_dump(cduk.duk_context *ctx):
+    cduk.duk_push_context_dump(ctx)
+    dump = force_unicode(cduk.duk_to_string(ctx, -1))
+    cduk.duk_pop(ctx)
+    cduk.duk_push_pointer(ctx, <void*>ctx)
+    addr = force_unicode(cduk.duk_to_string(ctx, -1))
+    cduk.duk_pop(ctx)
+    return '(%s) %s' % (addr, dump)
+
+
 cdef duk_reraise(cduk.duk_context *ctx, cduk.duk_int_t rc):
     if rc:
         if cduk.duk_is_error(ctx, -1):
