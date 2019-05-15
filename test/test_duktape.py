@@ -23,14 +23,14 @@ def test_stacklen_evalstring():
     "test stacklen and evalstring"
     ctx = duktape.Context()
     assert len(ctx) == 0
-    ctx.loads("var a = '123';")
+    ctx.eval("var a = '123';")
     assert len(ctx) == 1
 
 
 def test_error_handling():
     ctx = duktape.Context()
     with pytest.raises(duktape.Error):
-        ctx.loads("bad syntax bad bad bad")
+        ctx.eval("bad syntax bad bad bad")
 
 
 def test_gc():
@@ -82,9 +82,9 @@ def test_push_pyfunc():
     ctx = duktape.Context()
     ctx['foo'] = duktape.PyFunc(foo, 0)
     ctx['bar'] = duktape.PyFunc(bar, 1)
-    ctx.loads('var x = foo();')
+    ctx.eval('var x = foo();')
     assert ctx['x'] == 'foo'
-    ctx.loads('var y = bar("bar");')
+    ctx.eval('var y = bar("bar");')
     assert ctx['y'] == 'bar'
 
 
@@ -97,9 +97,9 @@ def test_push_plain_func():
     ctx = duktape.Context()
     ctx['foo'] = foo
     ctx['bar'] = bar
-    ctx.loads('var x = foo();')
+    ctx.eval('var x = foo();')
     assert ctx['x'] == 'foo'
-    ctx.loads('var y = bar("bar");')
+    ctx.eval('var y = bar("bar");')
     assert ctx['y'] == 'bar'
 
 

@@ -295,9 +295,13 @@ cdef class Context:
         duk_reraise(self.ctx, cduk.duk_pcall_method(self.ctx, 0)) # [ ... retval ]
         cduk.duk_pop(self.ctx)
 
-    def loads(self, js):
+    def eval(self, js):
+        # Eval code: compiles into a function with zero arguments, which
+        # executes like an ECMAScript eval call
         duk_reraise(self.ctx, cduk.duk_peval_string(self.ctx, smart_str(js)))
         return to_python(self.ctx, -1)
+
+    loads = eval
 
     def gc(self):
         cduk.duk_gc(self.ctx, 0)

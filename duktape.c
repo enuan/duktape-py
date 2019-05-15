@@ -1321,6 +1321,10 @@ static int __pyx_CyFunction_init(void);
 #define __Pyx_SetNameInClass(ns, name, value)  PyObject_SetItem(ns, name, value)
 #endif
 
+/* GetNameInClass.proto */
+#define __Pyx_GetNameInClass(var, nmspace, name)  (var) = __Pyx__GetNameInClass(nmspace, name)
+static PyObject *__Pyx__GetNameInClass(PyObject *nmspace, PyObject *name);
+
 /* CLineInTraceback.proto */
 #ifdef CYTHON_CLINE_IN_TRACEBACK
 #define __Pyx_CLineForTraceback(tstate, c_line)  (((CYTHON_CLINE_IN_TRACEBACK)) ? c_line : 0)
@@ -1515,6 +1519,7 @@ static const char __pyx_k_s_s[] = "(%s) %s";
 static const char __pyx_k_sys[] = "sys";
 static const char __pyx_k_Func[] = "Func";
 static const char __pyx_k_Type[] = "Type";
+static const char __pyx_k_eval[] = "eval";
 static const char __pyx_k_func[] = "func";
 static const char __pyx_k_init[] = "__init__";
 static const char __pyx_k_main[] = "__main__";
@@ -1524,6 +1529,7 @@ static const char __pyx_k_self[] = "self";
 static const char __pyx_k_test[] = "__test__";
 static const char __pyx_k_Error[] = "Error";
 static const char __pyx_k_items[] = "items";
+static const char __pyx_k_loads[] = "loads";
 static const char __pyx_k_nargs[] = "nargs";
 static const char __pyx_k_range[] = "range";
 static const char __pyx_k_setup[] = "setup";
@@ -1590,6 +1596,7 @@ static PyObject *__pyx_kp_s_duktape_Type_0_1;
 static PyObject *__pyx_kp_s_duktape_pyx;
 static PyObject *__pyx_n_s_encode;
 static PyObject *__pyx_n_s_enumerate;
+static PyObject *__pyx_n_s_eval;
 static PyObject *__pyx_n_s_format;
 static PyObject *__pyx_n_s_format_exc;
 static PyObject *__pyx_n_s_func;
@@ -1599,6 +1606,7 @@ static PyObject *__pyx_n_s_import;
 static PyObject *__pyx_n_s_init;
 static PyObject *__pyx_n_s_is_integer;
 static PyObject *__pyx_n_s_items;
+static PyObject *__pyx_n_s_loads;
 static PyObject *__pyx_n_s_main;
 static PyObject *__pyx_n_s_mapping;
 static PyObject *__pyx_n_s_metaclass;
@@ -1646,7 +1654,7 @@ static int __pyx_pf_7duktape_7Context_6__setitem__(struct __pyx_obj_7duktape_Con
 static PyObject *__pyx_pf_7duktape_7Context_8__getitem__(struct __pyx_obj_7duktape_Context *__pyx_v_self, PyObject *__pyx_v_key); /* proto */
 static Py_ssize_t __pyx_pf_7duktape_7Context_10__len__(struct __pyx_obj_7duktape_Context *__pyx_v_self); /* proto */
 static PyObject *__pyx_pf_7duktape_7Context_12load(struct __pyx_obj_7duktape_Context *__pyx_v_self, PyObject *__pyx_v_filename); /* proto */
-static PyObject *__pyx_pf_7duktape_7Context_14loads(struct __pyx_obj_7duktape_Context *__pyx_v_self, PyObject *__pyx_v_js); /* proto */
+static PyObject *__pyx_pf_7duktape_7Context_14eval(struct __pyx_obj_7duktape_Context *__pyx_v_self, PyObject *__pyx_v_js); /* proto */
 static PyObject *__pyx_pf_7duktape_7Context_16gc(struct __pyx_obj_7duktape_Context *__pyx_v_self); /* proto */
 static PyObject *__pyx_pf_7duktape_7Context_18_get(struct __pyx_obj_7duktape_Context *__pyx_v_self); /* proto */
 static PyObject *__pyx_pf_7duktape_7Context_20_push(struct __pyx_obj_7duktape_Context *__pyx_v_self, PyObject *__pyx_v_value); /* proto */
@@ -5440,8 +5448,8 @@ static Py_ssize_t __pyx_pf_7duktape_7Context_10__len__(struct __pyx_obj_7duktape
  *         return cduk.duk_get_top(self.ctx)
  * 
  *     def load(self, filename):             # <<<<<<<<<<<<<<
- *         # "use strict" causes global lookup failure #163
- *         # https://github.com/svaarala/duktape/issues/163
+ *         # Global code: compiles into a function with zero arguments, which
+ *         # executes like a top level ECMAScript program
  */
 
 /* Python wrapper */
@@ -5465,44 +5473,44 @@ static PyObject *__pyx_pf_7duktape_7Context_12load(struct __pyx_obj_7duktape_Con
   char const *__pyx_t_3;
   __Pyx_RefNannySetupContext("load", 0);
 
-  /* "duktape.pyx":291
+  /* "duktape.pyx":294
  *         # convenience call for eval code).
  *         # Current duk_(p)eval() won't supply a this binding.
  *         cduk.fileio_push_file_string(self.ctx, smart_str(filename)) # [ ... source ]             # <<<<<<<<<<<<<<
  *         cduk.duk_push_string(self.ctx, smart_str(filename)) # [ ... source filename ]
  *         duk_reraise(self.ctx, cduk.duk_pcompile(self.ctx, 0)) # [ ... func ]
  */
-  __pyx_t_1 = __pyx_f_7duktape_smart_str(__pyx_v_filename); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 291, __pyx_L1_error)
+  __pyx_t_1 = __pyx_f_7duktape_smart_str(__pyx_v_filename); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 294, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_1);
-  __pyx_t_2 = __Pyx_PyObject_AsString(__pyx_t_1); if (unlikely((!__pyx_t_2) && PyErr_Occurred())) __PYX_ERR(0, 291, __pyx_L1_error)
+  __pyx_t_2 = __Pyx_PyObject_AsString(__pyx_t_1); if (unlikely((!__pyx_t_2) && PyErr_Occurred())) __PYX_ERR(0, 294, __pyx_L1_error)
   fileio_push_file_string(__pyx_v_self->ctx, __pyx_t_2);
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
 
-  /* "duktape.pyx":292
+  /* "duktape.pyx":295
  *         # Current duk_(p)eval() won't supply a this binding.
  *         cduk.fileio_push_file_string(self.ctx, smart_str(filename)) # [ ... source ]
  *         cduk.duk_push_string(self.ctx, smart_str(filename)) # [ ... source filename ]             # <<<<<<<<<<<<<<
  *         duk_reraise(self.ctx, cduk.duk_pcompile(self.ctx, 0)) # [ ... func ]
  *         # bind 'this' to global object
  */
-  __pyx_t_1 = __pyx_f_7duktape_smart_str(__pyx_v_filename); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 292, __pyx_L1_error)
+  __pyx_t_1 = __pyx_f_7duktape_smart_str(__pyx_v_filename); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 295, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_1);
-  __pyx_t_3 = __Pyx_PyObject_AsString(__pyx_t_1); if (unlikely((!__pyx_t_3) && PyErr_Occurred())) __PYX_ERR(0, 292, __pyx_L1_error)
+  __pyx_t_3 = __Pyx_PyObject_AsString(__pyx_t_1); if (unlikely((!__pyx_t_3) && PyErr_Occurred())) __PYX_ERR(0, 295, __pyx_L1_error)
   (void)(duk_push_string(__pyx_v_self->ctx, __pyx_t_3));
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
 
-  /* "duktape.pyx":293
+  /* "duktape.pyx":296
  *         cduk.fileio_push_file_string(self.ctx, smart_str(filename)) # [ ... source ]
  *         cduk.duk_push_string(self.ctx, smart_str(filename)) # [ ... source filename ]
  *         duk_reraise(self.ctx, cduk.duk_pcompile(self.ctx, 0)) # [ ... func ]             # <<<<<<<<<<<<<<
  *         # bind 'this' to global object
  *         cduk.duk_push_global_object(self.ctx)  # [ ... func global ]
  */
-  __pyx_t_1 = __pyx_f_7duktape_duk_reraise(__pyx_v_self->ctx, duk_pcompile(__pyx_v_self->ctx, 0)); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 293, __pyx_L1_error)
+  __pyx_t_1 = __pyx_f_7duktape_duk_reraise(__pyx_v_self->ctx, duk_pcompile(__pyx_v_self->ctx, 0)); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 296, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_1);
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
 
-  /* "duktape.pyx":295
+  /* "duktape.pyx":298
  *         duk_reraise(self.ctx, cduk.duk_pcompile(self.ctx, 0)) # [ ... func ]
  *         # bind 'this' to global object
  *         cduk.duk_push_global_object(self.ctx)  # [ ... func global ]             # <<<<<<<<<<<<<<
@@ -5511,23 +5519,23 @@ static PyObject *__pyx_pf_7duktape_7Context_12load(struct __pyx_obj_7duktape_Con
  */
   duk_push_global_object(__pyx_v_self->ctx);
 
-  /* "duktape.pyx":296
+  /* "duktape.pyx":299
  *         # bind 'this' to global object
  *         cduk.duk_push_global_object(self.ctx)  # [ ... func global ]
  *         duk_reraise(self.ctx, cduk.duk_pcall_method(self.ctx, 0)) # [ ... retval ]             # <<<<<<<<<<<<<<
  *         cduk.duk_pop(self.ctx)
  * 
  */
-  __pyx_t_1 = __pyx_f_7duktape_duk_reraise(__pyx_v_self->ctx, duk_pcall_method(__pyx_v_self->ctx, 0)); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 296, __pyx_L1_error)
+  __pyx_t_1 = __pyx_f_7duktape_duk_reraise(__pyx_v_self->ctx, duk_pcall_method(__pyx_v_self->ctx, 0)); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 299, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_1);
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
 
-  /* "duktape.pyx":297
+  /* "duktape.pyx":300
  *         cduk.duk_push_global_object(self.ctx)  # [ ... func global ]
  *         duk_reraise(self.ctx, cduk.duk_pcall_method(self.ctx, 0)) # [ ... retval ]
  *         cduk.duk_pop(self.ctx)             # <<<<<<<<<<<<<<
  * 
- *     def loads(self, js):
+ *     def eval(self, js):
  */
   duk_pop(__pyx_v_self->ctx);
 
@@ -5535,8 +5543,8 @@ static PyObject *__pyx_pf_7duktape_7Context_12load(struct __pyx_obj_7duktape_Con
  *         return cduk.duk_get_top(self.ctx)
  * 
  *     def load(self, filename):             # <<<<<<<<<<<<<<
- *         # "use strict" causes global lookup failure #163
- *         # https://github.com/svaarala/duktape/issues/163
+ *         # Global code: compiles into a function with zero arguments, which
+ *         # executes like a top level ECMAScript program
  */
 
   /* function exit code */
@@ -5552,77 +5560,77 @@ static PyObject *__pyx_pf_7duktape_7Context_12load(struct __pyx_obj_7duktape_Con
   return __pyx_r;
 }
 
-/* "duktape.pyx":299
+/* "duktape.pyx":302
  *         cduk.duk_pop(self.ctx)
  * 
- *     def loads(self, js):             # <<<<<<<<<<<<<<
- *         duk_reraise(self.ctx, cduk.duk_peval_string(self.ctx, smart_str(js)))
- *         return to_python(self.ctx, -1)
+ *     def eval(self, js):             # <<<<<<<<<<<<<<
+ *         # Eval code: compiles into a function with zero arguments, which
+ *         # executes like an ECMAScript eval call
  */
 
 /* Python wrapper */
-static PyObject *__pyx_pw_7duktape_7Context_15loads(PyObject *__pyx_v_self, PyObject *__pyx_v_js); /*proto*/
-static PyObject *__pyx_pw_7duktape_7Context_15loads(PyObject *__pyx_v_self, PyObject *__pyx_v_js) {
+static PyObject *__pyx_pw_7duktape_7Context_15eval(PyObject *__pyx_v_self, PyObject *__pyx_v_js); /*proto*/
+static PyObject *__pyx_pw_7duktape_7Context_15eval(PyObject *__pyx_v_self, PyObject *__pyx_v_js) {
   PyObject *__pyx_r = 0;
   __Pyx_RefNannyDeclarations
-  __Pyx_RefNannySetupContext("loads (wrapper)", 0);
-  __pyx_r = __pyx_pf_7duktape_7Context_14loads(((struct __pyx_obj_7duktape_Context *)__pyx_v_self), ((PyObject *)__pyx_v_js));
+  __Pyx_RefNannySetupContext("eval (wrapper)", 0);
+  __pyx_r = __pyx_pf_7duktape_7Context_14eval(((struct __pyx_obj_7duktape_Context *)__pyx_v_self), ((PyObject *)__pyx_v_js));
 
   /* function exit code */
   __Pyx_RefNannyFinishContext();
   return __pyx_r;
 }
 
-static PyObject *__pyx_pf_7duktape_7Context_14loads(struct __pyx_obj_7duktape_Context *__pyx_v_self, PyObject *__pyx_v_js) {
+static PyObject *__pyx_pf_7duktape_7Context_14eval(struct __pyx_obj_7duktape_Context *__pyx_v_self, PyObject *__pyx_v_js) {
   PyObject *__pyx_r = NULL;
   __Pyx_RefNannyDeclarations
   PyObject *__pyx_t_1 = NULL;
   char const *__pyx_t_2;
   PyObject *__pyx_t_3 = NULL;
-  __Pyx_RefNannySetupContext("loads", 0);
+  __Pyx_RefNannySetupContext("eval", 0);
 
-  /* "duktape.pyx":300
- * 
- *     def loads(self, js):
+  /* "duktape.pyx":305
+ *         # Eval code: compiles into a function with zero arguments, which
+ *         # executes like an ECMAScript eval call
  *         duk_reraise(self.ctx, cduk.duk_peval_string(self.ctx, smart_str(js)))             # <<<<<<<<<<<<<<
  *         return to_python(self.ctx, -1)
  * 
  */
-  __pyx_t_1 = __pyx_f_7duktape_smart_str(__pyx_v_js); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 300, __pyx_L1_error)
+  __pyx_t_1 = __pyx_f_7duktape_smart_str(__pyx_v_js); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 305, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_1);
-  __pyx_t_2 = __Pyx_PyObject_AsString(__pyx_t_1); if (unlikely((!__pyx_t_2) && PyErr_Occurred())) __PYX_ERR(0, 300, __pyx_L1_error)
-  __pyx_t_3 = __pyx_f_7duktape_duk_reraise(__pyx_v_self->ctx, duk_peval_string(__pyx_v_self->ctx, __pyx_t_2)); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 300, __pyx_L1_error)
+  __pyx_t_2 = __Pyx_PyObject_AsString(__pyx_t_1); if (unlikely((!__pyx_t_2) && PyErr_Occurred())) __PYX_ERR(0, 305, __pyx_L1_error)
+  __pyx_t_3 = __pyx_f_7duktape_duk_reraise(__pyx_v_self->ctx, duk_peval_string(__pyx_v_self->ctx, __pyx_t_2)); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 305, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
 
-  /* "duktape.pyx":301
- *     def loads(self, js):
+  /* "duktape.pyx":306
+ *         # executes like an ECMAScript eval call
  *         duk_reraise(self.ctx, cduk.duk_peval_string(self.ctx, smart_str(js)))
  *         return to_python(self.ctx, -1)             # <<<<<<<<<<<<<<
  * 
- *     def gc(self):
+ *     loads = eval
  */
   __Pyx_XDECREF(__pyx_r);
-  __pyx_t_3 = __pyx_f_7duktape_to_python(__pyx_v_self->ctx, -1); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 301, __pyx_L1_error)
+  __pyx_t_3 = __pyx_f_7duktape_to_python(__pyx_v_self->ctx, -1); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 306, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
   __pyx_r = __pyx_t_3;
   __pyx_t_3 = 0;
   goto __pyx_L0;
 
-  /* "duktape.pyx":299
+  /* "duktape.pyx":302
  *         cduk.duk_pop(self.ctx)
  * 
- *     def loads(self, js):             # <<<<<<<<<<<<<<
- *         duk_reraise(self.ctx, cduk.duk_peval_string(self.ctx, smart_str(js)))
- *         return to_python(self.ctx, -1)
+ *     def eval(self, js):             # <<<<<<<<<<<<<<
+ *         # Eval code: compiles into a function with zero arguments, which
+ *         # executes like an ECMAScript eval call
  */
 
   /* function exit code */
   __pyx_L1_error:;
   __Pyx_XDECREF(__pyx_t_1);
   __Pyx_XDECREF(__pyx_t_3);
-  __Pyx_AddTraceback("duktape.Context.loads", __pyx_clineno, __pyx_lineno, __pyx_filename);
+  __Pyx_AddTraceback("duktape.Context.eval", __pyx_clineno, __pyx_lineno, __pyx_filename);
   __pyx_r = NULL;
   __pyx_L0:;
   __Pyx_XGIVEREF(__pyx_r);
@@ -5630,8 +5638,8 @@ static PyObject *__pyx_pf_7duktape_7Context_14loads(struct __pyx_obj_7duktape_Co
   return __pyx_r;
 }
 
-/* "duktape.pyx":303
- *         return to_python(self.ctx, -1)
+/* "duktape.pyx":310
+ *     loads = eval
  * 
  *     def gc(self):             # <<<<<<<<<<<<<<
  *         cduk.duk_gc(self.ctx, 0)
@@ -5656,7 +5664,7 @@ static PyObject *__pyx_pf_7duktape_7Context_16gc(struct __pyx_obj_7duktape_Conte
   __Pyx_RefNannyDeclarations
   __Pyx_RefNannySetupContext("gc", 0);
 
-  /* "duktape.pyx":304
+  /* "duktape.pyx":311
  * 
  *     def gc(self):
  *         cduk.duk_gc(self.ctx, 0)             # <<<<<<<<<<<<<<
@@ -5665,8 +5673,8 @@ static PyObject *__pyx_pf_7duktape_7Context_16gc(struct __pyx_obj_7duktape_Conte
  */
   duk_gc(__pyx_v_self->ctx, 0);
 
-  /* "duktape.pyx":303
- *         return to_python(self.ctx, -1)
+  /* "duktape.pyx":310
+ *     loads = eval
  * 
  *     def gc(self):             # <<<<<<<<<<<<<<
  *         cduk.duk_gc(self.ctx, 0)
@@ -5680,7 +5688,7 @@ static PyObject *__pyx_pf_7duktape_7Context_16gc(struct __pyx_obj_7duktape_Conte
   return __pyx_r;
 }
 
-/* "duktape.pyx":306
+/* "duktape.pyx":313
  *         cduk.duk_gc(self.ctx, 0)
  * 
  *     def _get(self):             # <<<<<<<<<<<<<<
@@ -5707,7 +5715,7 @@ static PyObject *__pyx_pf_7duktape_7Context_18_get(struct __pyx_obj_7duktape_Con
   PyObject *__pyx_t_1 = NULL;
   __Pyx_RefNannySetupContext("_get", 0);
 
-  /* "duktape.pyx":307
+  /* "duktape.pyx":314
  * 
  *     def _get(self):
  *         return to_python(self.ctx, -1)             # <<<<<<<<<<<<<<
@@ -5715,13 +5723,13 @@ static PyObject *__pyx_pf_7duktape_7Context_18_get(struct __pyx_obj_7duktape_Con
  *     def _push(self, value):
  */
   __Pyx_XDECREF(__pyx_r);
-  __pyx_t_1 = __pyx_f_7duktape_to_python(__pyx_v_self->ctx, -1); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 307, __pyx_L1_error)
+  __pyx_t_1 = __pyx_f_7duktape_to_python(__pyx_v_self->ctx, -1); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 314, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_1);
   __pyx_r = __pyx_t_1;
   __pyx_t_1 = 0;
   goto __pyx_L0;
 
-  /* "duktape.pyx":306
+  /* "duktape.pyx":313
  *         cduk.duk_gc(self.ctx, 0)
  * 
  *     def _get(self):             # <<<<<<<<<<<<<<
@@ -5740,7 +5748,7 @@ static PyObject *__pyx_pf_7duktape_7Context_18_get(struct __pyx_obj_7duktape_Con
   return __pyx_r;
 }
 
-/* "duktape.pyx":309
+/* "duktape.pyx":316
  *         return to_python(self.ctx, -1)
  * 
  *     def _push(self, value):             # <<<<<<<<<<<<<<
@@ -5767,18 +5775,18 @@ static PyObject *__pyx_pf_7duktape_7Context_20_push(struct __pyx_obj_7duktape_Co
   PyObject *__pyx_t_1 = NULL;
   __Pyx_RefNannySetupContext("_push", 0);
 
-  /* "duktape.pyx":310
+  /* "duktape.pyx":317
  * 
  *     def _push(self, value):
  *         to_js(self.ctx, value)             # <<<<<<<<<<<<<<
  * 
  *     def _type(self, idx=-1):
  */
-  __pyx_t_1 = __pyx_f_7duktape_to_js(__pyx_v_self->ctx, __pyx_v_value); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 310, __pyx_L1_error)
+  __pyx_t_1 = __pyx_f_7duktape_to_js(__pyx_v_self->ctx, __pyx_v_value); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 317, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_1);
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
 
-  /* "duktape.pyx":309
+  /* "duktape.pyx":316
  *         return to_python(self.ctx, -1)
  * 
  *     def _push(self, value):             # <<<<<<<<<<<<<<
@@ -5799,7 +5807,7 @@ static PyObject *__pyx_pf_7duktape_7Context_20_push(struct __pyx_obj_7duktape_Co
   return __pyx_r;
 }
 
-/* "duktape.pyx":312
+/* "duktape.pyx":319
  *         to_js(self.ctx, value)
  * 
  *     def _type(self, idx=-1):             # <<<<<<<<<<<<<<
@@ -5835,7 +5843,7 @@ static PyObject *__pyx_pw_7duktape_7Context_23_type(PyObject *__pyx_v_self, PyOb
         }
       }
       if (unlikely(kw_args > 0)) {
-        if (unlikely(__Pyx_ParseOptionalKeywords(__pyx_kwds, __pyx_pyargnames, 0, values, pos_args, "_type") < 0)) __PYX_ERR(0, 312, __pyx_L3_error)
+        if (unlikely(__Pyx_ParseOptionalKeywords(__pyx_kwds, __pyx_pyargnames, 0, values, pos_args, "_type") < 0)) __PYX_ERR(0, 319, __pyx_L3_error)
       }
     } else {
       switch (PyTuple_GET_SIZE(__pyx_args)) {
@@ -5849,7 +5857,7 @@ static PyObject *__pyx_pw_7duktape_7Context_23_type(PyObject *__pyx_v_self, PyOb
   }
   goto __pyx_L4_argument_unpacking_done;
   __pyx_L5_argtuple_error:;
-  __Pyx_RaiseArgtupleInvalid("_type", 0, 0, 1, PyTuple_GET_SIZE(__pyx_args)); __PYX_ERR(0, 312, __pyx_L3_error)
+  __Pyx_RaiseArgtupleInvalid("_type", 0, 0, 1, PyTuple_GET_SIZE(__pyx_args)); __PYX_ERR(0, 319, __pyx_L3_error)
   __pyx_L3_error:;
   __Pyx_AddTraceback("duktape.Context._type", __pyx_clineno, __pyx_lineno, __pyx_filename);
   __Pyx_RefNannyFinishContext();
@@ -5872,16 +5880,16 @@ static PyObject *__pyx_pf_7duktape_7Context_22_type(struct __pyx_obj_7duktape_Co
   PyObject *__pyx_t_5 = NULL;
   __Pyx_RefNannySetupContext("_type", 0);
 
-  /* "duktape.pyx":313
+  /* "duktape.pyx":320
  * 
  *     def _type(self, idx=-1):
  *         return Type(cduk.duk_get_type(self.ctx, idx))             # <<<<<<<<<<<<<<
  */
   __Pyx_XDECREF(__pyx_r);
-  __Pyx_GetModuleGlobalName(__pyx_t_2, __pyx_n_s_Type); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 313, __pyx_L1_error)
+  __Pyx_GetModuleGlobalName(__pyx_t_2, __pyx_n_s_Type); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 320, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
-  __pyx_t_3 = __Pyx_PyInt_As_duk_int_t(__pyx_v_idx); if (unlikely((__pyx_t_3 == ((duk_idx_t)-1)) && PyErr_Occurred())) __PYX_ERR(0, 313, __pyx_L1_error)
-  __pyx_t_4 = __Pyx_PyInt_From_duk_int_t(duk_get_type(__pyx_v_self->ctx, __pyx_t_3)); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 313, __pyx_L1_error)
+  __pyx_t_3 = __Pyx_PyInt_As_duk_int_t(__pyx_v_idx); if (unlikely((__pyx_t_3 == ((duk_idx_t)-1)) && PyErr_Occurred())) __PYX_ERR(0, 320, __pyx_L1_error)
+  __pyx_t_4 = __Pyx_PyInt_From_duk_int_t(duk_get_type(__pyx_v_self->ctx, __pyx_t_3)); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 320, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_4);
   __pyx_t_5 = NULL;
   if (CYTHON_UNPACK_METHODS && unlikely(PyMethod_Check(__pyx_t_2))) {
@@ -5896,14 +5904,14 @@ static PyObject *__pyx_pf_7duktape_7Context_22_type(struct __pyx_obj_7duktape_Co
   __pyx_t_1 = (__pyx_t_5) ? __Pyx_PyObject_Call2Args(__pyx_t_2, __pyx_t_5, __pyx_t_4) : __Pyx_PyObject_CallOneArg(__pyx_t_2, __pyx_t_4);
   __Pyx_XDECREF(__pyx_t_5); __pyx_t_5 = 0;
   __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
-  if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 313, __pyx_L1_error)
+  if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 320, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_1);
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
   __pyx_r = __pyx_t_1;
   __pyx_t_1 = 0;
   goto __pyx_L0;
 
-  /* "duktape.pyx":312
+  /* "duktape.pyx":319
  *         to_js(self.ctx, value)
  * 
  *     def _type(self, idx=-1):             # <<<<<<<<<<<<<<
@@ -6168,7 +6176,7 @@ static int __pyx_mp_ass_subscript_7duktape_Context(PyObject *o, PyObject *i, PyO
 static PyMethodDef __pyx_methods_7duktape_Context[] = {
   {"setup", (PyCFunction)__pyx_pw_7duktape_7Context_5setup, METH_NOARGS, 0},
   {"load", (PyCFunction)__pyx_pw_7duktape_7Context_13load, METH_O, 0},
-  {"loads", (PyCFunction)__pyx_pw_7duktape_7Context_15loads, METH_O, 0},
+  {"eval", (PyCFunction)__pyx_pw_7duktape_7Context_15eval, METH_O, 0},
   {"gc", (PyCFunction)__pyx_pw_7duktape_7Context_17gc, METH_NOARGS, 0},
   {"_get", (PyCFunction)__pyx_pw_7duktape_7Context_19_get, METH_NOARGS, 0},
   {"_push", (PyCFunction)__pyx_pw_7duktape_7Context_21_push, METH_O, 0},
@@ -6322,6 +6330,7 @@ static __Pyx_StringTabEntry __pyx_string_tab[] = {
   {&__pyx_kp_s_duktape_pyx, __pyx_k_duktape_pyx, sizeof(__pyx_k_duktape_pyx), 0, 0, 1, 0},
   {&__pyx_n_s_encode, __pyx_k_encode, sizeof(__pyx_k_encode), 0, 0, 1, 1},
   {&__pyx_n_s_enumerate, __pyx_k_enumerate, sizeof(__pyx_k_enumerate), 0, 0, 1, 1},
+  {&__pyx_n_s_eval, __pyx_k_eval, sizeof(__pyx_k_eval), 0, 0, 1, 1},
   {&__pyx_n_s_format, __pyx_k_format, sizeof(__pyx_k_format), 0, 0, 1, 1},
   {&__pyx_n_s_format_exc, __pyx_k_format_exc, sizeof(__pyx_k_format_exc), 0, 0, 1, 1},
   {&__pyx_n_s_func, __pyx_k_func, sizeof(__pyx_k_func), 0, 0, 1, 1},
@@ -6331,6 +6340,7 @@ static __Pyx_StringTabEntry __pyx_string_tab[] = {
   {&__pyx_n_s_init, __pyx_k_init, sizeof(__pyx_k_init), 0, 0, 1, 1},
   {&__pyx_n_s_is_integer, __pyx_k_is_integer, sizeof(__pyx_k_is_integer), 0, 0, 1, 1},
   {&__pyx_n_s_items, __pyx_k_items, sizeof(__pyx_k_items), 0, 0, 1, 1},
+  {&__pyx_n_s_loads, __pyx_k_loads, sizeof(__pyx_k_loads), 0, 0, 1, 1},
   {&__pyx_n_s_main, __pyx_k_main, sizeof(__pyx_k_main), 0, 0, 1, 1},
   {&__pyx_n_s_mapping, __pyx_k_mapping, sizeof(__pyx_k_mapping), 0, 0, 1, 1},
   {&__pyx_n_s_metaclass, __pyx_k_metaclass, sizeof(__pyx_k_metaclass), 0, 0, 1, 1},
@@ -7056,6 +7066,19 @@ if (!__Pyx_RefNanny) {
   if (PyDict_SetItem(__pyx_d, __pyx_n_s_Type, __pyx_t_2) < 0) __PYX_ERR(0, 226, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
+
+  /* "duktape.pyx":308
+ *         return to_python(self.ctx, -1)
+ * 
+ *     loads = eval             # <<<<<<<<<<<<<<
+ * 
+ *     def gc(self):
+ */
+  __Pyx_GetNameInClass(__pyx_t_1, (PyObject *)__pyx_ptype_7duktape_Context, __pyx_n_s_eval); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 308, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_1);
+  if (PyDict_SetItem((PyObject *)__pyx_ptype_7duktape_Context->tp_dict, __pyx_n_s_loads, __pyx_t_1) < 0) __PYX_ERR(0, 308, __pyx_L1_error)
+  __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
+  PyType_Modified(__pyx_ptype_7duktape_Context);
 
   /* "duktape.pyx":1
  * cimport cduk             # <<<<<<<<<<<<<<
@@ -9351,6 +9374,26 @@ static CYTHON_INLINE void __Pyx_CyFunction_SetAnnotationsDict(PyObject *func, Py
     __pyx_CyFunctionObject *m = (__pyx_CyFunctionObject *) func;
     m->func_annotations = dict;
     Py_INCREF(dict);
+}
+
+/* GetNameInClass */
+static PyObject *__Pyx_GetGlobalNameAfterAttributeLookup(PyObject *name) {
+    PyObject *result;
+    __Pyx_PyThreadState_declare
+    __Pyx_PyThreadState_assign
+    if (unlikely(!__Pyx_PyErr_ExceptionMatches(PyExc_AttributeError)))
+        return NULL;
+    __Pyx_PyErr_Clear();
+    __Pyx_GetModuleGlobalNameUncached(result, name);
+    return result;
+}
+static PyObject *__Pyx__GetNameInClass(PyObject *nmspace, PyObject *name) {
+    PyObject *result;
+    result = __Pyx_PyObject_GetAttrStr(nmspace, name);
+    if (!result) {
+        result = __Pyx_GetGlobalNameAfterAttributeLookup(name);
+    }
+    return result;
 }
 
 /* CLineInTraceback */
