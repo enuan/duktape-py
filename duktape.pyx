@@ -112,7 +112,8 @@ cdef to_python(cduk.duk_context *ctx, cduk.duk_idx_t idx):
     elif cduk.duk_is_null_or_undefined(ctx, idx):
         return None
     elif cduk.duk_is_number(ctx, idx):
-        return float(cduk.duk_get_number(ctx, idx))
+        num = float(cduk.duk_get_number(ctx, idx))
+        return int(num) if num.is_integer() else num
     elif cduk.duk_is_string(ctx, idx):
         return to_python_string(ctx, idx)
     elif cduk.duk_is_array(ctx, idx):
@@ -192,8 +193,10 @@ cdef to_js(cduk.duk_context *ctx, value):
             cduk.duk_push_true(ctx)
         else:
             cduk.duk_push_false(ctx)
-    elif isinstance(value, (int, float)):
+    elif isinstance(value, int):
         cduk.duk_push_int(ctx, value)
+    elif isinstance(value, float):
+        cduk.duk_push_number(ctx, value)
     elif isinstance(value, (list, tuple)):
         to_js_array(ctx, value)
     elif isinstance(value, PyFunc):
