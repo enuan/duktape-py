@@ -272,9 +272,28 @@ cdef class Context:
         return cduk.duk_get_top(self.ctx)
 
     def load(self, filename):
-        cduk.fileio_push_file_string(self.ctx, smart_str(filename))
-        duk_reraise(self.ctx, cduk.duk_peval(self.ctx))
-        return to_python(self.ctx, -1)
+        # Global code: compiles into a function with zero arguments, which
+        # executes like a top level ECMAScript program
+        #
+        # "use strict" causes global lookup failure #163
+        # https://github.com/svaarala/duktape/issues/163
+        #
+        # Strict eval code cannot establish global bindings through
+        # variable/function declarations; this is part of the Ecmascript
+        # standard.
+        # If you want a script file to be strict and establish global
+        # bindings, you can compile and run the script as a program code
+        # (default, flags=0) instead of eval code. You can do so by using
+        # duk_pcompile() and duk_pcall() instead of duk_peval() (which is a
+        # convenience call for eval code).
+        # Current duk_(p)eval() won't supply a this binding.
+        cduk.fileio_push_file_string(self.ctx, smart_str(filename)) # [ ... source ]
+        cduk.duk_push_string(self.ctx, smart_str(filename)) # [ ... source filename ]
+        duk_reraise(self.ctx, cduk.duk_pcompile(self.ctx, 0)) # [ ... func ]
+        # bind 'this' to global object
+        cduk.duk_push_global_object(self.ctx)  # [ ... func global ]
+        duk_reraise(self.ctx, cduk.duk_pcall_method(self.ctx, 0)) # [ ... retval ]
+        cduk.duk_pop(self.ctx)
 
     def loads(self, js):
         duk_reraise(self.ctx, cduk.duk_peval_string(self.ctx, smart_str(js)))

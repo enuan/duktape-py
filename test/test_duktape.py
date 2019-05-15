@@ -17,7 +17,6 @@ def test_eval_file():
         tf.write(b"var a = {a: 1, b: 2};")
         tf.flush()
         ctx.load(tf.name)
-    assert len(ctx) == 1
 
 
 def test_stacklen_evalstring():
@@ -102,3 +101,61 @@ def test_push_plain_func():
     assert ctx['x'] == 'foo'
     ctx.loads('var y = bar("bar");')
     assert ctx['y'] == 'bar'
+
+
+def test_load_file_with_syntax_error():
+    ctx = duktape.Context()
+    with tempfile.NamedTemporaryFile() as tf:
+        tf.write(b"var a = 10;\n"
+                 b"foo=")
+        tf.flush()
+
+        try:
+            ctx.load(tf.name)
+        except duktape.Error, e:
+            # error contains filename and line number
+            assert '%s:2' % tf.name in unicode(e), e
+
+
+def test_load_file_using_this():
+    ctx = duktape.Context()
+    with tempfile.NamedTemporaryFile() as tf1:
+        tf1.write(b"this.a = 10;");
+        tf1.flush()
+        ctx.load(tf1.name)
+    with tempfile.NamedTemporaryFile() as tf2:
+        tf2.write(b'this.b = this.a+10;');
+        tf2.flush()
+        ctx.load(tf2.name)
+
+    assert ctx['a'] == 10
+    assert ctx['b'] == 20
+
+
+def test_load_file_using_strict():
+    ctx = duktape.Context()
+    with tempfile.NamedTemporaryFile() as tf1:
+        tf1.write(b"var a = 10;");
+        tf1.flush()
+        ctx.load(tf1.name)
+    with tempfile.NamedTemporaryFile() as tf2:
+        tf2.write(b'"use strict"; var b = a+10;');
+        tf2.flush()
+        ctx.load(tf2.name)
+
+    assert ctx['a'] == 10
+    assert ctx['b'] == 20
+
+def test_load_file_using_strict_and_this():
+    ctx = duktape.Context()
+    with tempfile.NamedTemporaryFile() as tf1:
+        tf1.write(b"this.a = 10;");
+        tf1.flush()
+        ctx.load(tf1.name)
+    with tempfile.NamedTemporaryFile() as tf2:
+        tf2.write(b'"use strict"; this.b = this.a+10;');
+        tf2.flush()
+        ctx.load(tf2.name)
+
+    assert ctx['a'] == 10
+    assert ctx['b'] == 20

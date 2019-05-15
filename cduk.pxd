@@ -31,6 +31,11 @@ cdef extern from "duktape_c/duktape.h":
     unsigned int DUK_TYPE_STRING
     unsigned int DUK_TYPE_OBJECT
 
+    unsigned int DUK_COMPILE_EVAL
+    unsigned int DUK_COMPILE_FUNCTION
+    unsigned int DUK_COMPILE_STRICT
+    unsigned int DUK_COMPILE_SHEBANG
+
     unsigned int DUK_ENUM_OWN_PROPERTIES_ONLY
 
     void duk_concat(duk_context *ctx, duk_idx_t count)
@@ -67,6 +72,7 @@ cdef extern from "duktape_c/duktape.h":
     duk_bool_t duk_next(duk_context *ctx, duk_idx_t enum_idx, duk_bool_t get_value)
     duk_idx_t duk_normalize_index(duk_context *ctx, duk_idx_t idx)
     duk_int_t duk_pcall(duk_context *ctx, duk_idx_t nargs)
+    duk_int_t duk_pcall_method(duk_context *ctx, duk_idx_t nargs)
     duk_int_t duk_pcompile(duk_context *ctx, duk_uint_t flags) # macro
     duk_int_t duk_peval(duk_context *ctx) # macro
     duk_int_t duk_peval_string(duk_context *ctx, const char *src)
