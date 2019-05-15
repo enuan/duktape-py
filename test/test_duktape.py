@@ -72,3 +72,18 @@ def test_push_get():
     for v in ["foo", u"foo", 123.0, 123, 123.5, True, False, [1, 2, 3], [[1]], {"a": 1, "b": 2}]:
         ctx._push(v)
         assert v == ctx._get()
+
+
+def test_push_pyfunc():
+    def foo():
+        return 'foo'
+    def bar(x):
+        return x
+
+    ctx = duktape.Context()
+    ctx['foo'] = duktape.PyFunc(foo, 0)
+    ctx['bar'] = duktape.PyFunc(bar, 1)
+    ctx.loads('var x = foo();')
+    assert ctx['x'] == 'foo'
+    ctx.loads('var y = bar("bar");')
+    assert ctx['y'] == 'bar'

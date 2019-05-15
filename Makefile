@@ -1,4 +1,4 @@
-duktape.c: duktape.pyx
+duktape.c: duktape.pyx cduk.pxd
 	cython duktape.pyx
 
 build: duktape.c

@@ -151,8 +151,9 @@ cdef cduk.duk_ret_t js_func_wrapper(cduk.duk_context *ctx):
 
 
 cdef cduk.duk_ret_t js_func_finalizer(cduk.duk_context *ctx):
-    ptr = cduk.duk_get_heapptr(ctx, -1)
-    func = <object>ptr
+    cduk.duk_get_prop_string(ctx, 0, "__duktape_cfunc_pointer__")
+    func = <object>cduk.duk_get_pointer(ctx, -1)
+    cduk.duk_pop(ctx)
     cpython.Py_DECREF(func)
     return 0
 

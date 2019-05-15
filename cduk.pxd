@@ -97,6 +97,7 @@ cdef extern from "duktape_c/duktape.h":
     void duk_require_function(duk_context *ctx, duk_idx_t idx)
     duk_int_t duk_require_int(duk_context *ctx, duk_idx_t idx)
     duk_double_t duk_require_number(duk_context *ctx, duk_idx_t idx)
+    void *duk_get_pointer(duk_context *ctx, duk_idx_t idx)
     void *duk_require_pointer(duk_context *ctx, duk_idx_t idx)
     void duk_require_stack(duk_context *ctx, duk_idx_t extra)
     const char *duk_safe_to_string(duk_context *ctx, duk_idx_t idx)
