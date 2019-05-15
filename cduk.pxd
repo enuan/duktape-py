@@ -50,6 +50,7 @@ cdef extern from "duktape_c/duktape.h":
     duk_bool_t duk_get_prop(duk_context *ctx, duk_idx_t obj_idx)
     duk_bool_t duk_get_prop_index(duk_context *ctx, duk_idx_t obj_idx, duk_uarridx_t arr_idx)
     duk_bool_t duk_get_prop_string(duk_context *ctx, duk_idx_t obj_idx, const char *key)
+    duk_bool_t duk_has_prop_string(duk_context *ctx, duk_idx_t obj_idx, const char *key)
     duk_idx_t duk_get_top(duk_context *ctx)
     duk_int_t duk_get_type(duk_context *ctx, duk_idx_t idx)
     void duk_insert(duk_context *ctx, duk_idx_t to_idx)

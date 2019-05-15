@@ -87,3 +87,18 @@ def test_push_pyfunc():
     assert ctx['x'] == 'foo'
     ctx.loads('var y = bar("bar");')
     assert ctx['y'] == 'bar'
+
+
+def test_push_plain_func():
+    def foo():
+        return 'foo'
+    def bar(x):
+        return x
+
+    ctx = duktape.Context()
+    ctx['foo'] = foo
+    ctx['bar'] = bar
+    ctx.loads('var x = foo();')
+    assert ctx['x'] == 'foo'
+    ctx.loads('var y = bar("bar");')
+    assert ctx['y'] == 'bar'

@@ -34,7 +34,7 @@ cdef duk_reraise(cduk.duk_context *ctx, cduk.duk_int_t rc):
 
 class PyFunc:
 
-    def __init__(self, func, nargs):
+    def __init__(self, func, nargs=None):
         self.func = func
         self.nargs = nargs
 
@@ -130,17 +130,17 @@ cdef to_python(cduk.duk_context *ctx, cduk.duk_idx_t idx):
 cdef cduk.duk_ret_t js_func_wrapper(cduk.duk_context *ctx):
     # [ args... ]
     cdef cduk.duk_int_t nargs
-    cdef void *ptr
 
+    nargs = cduk.duk_get_top(ctx)
     cduk.duk_push_current_function(ctx)
 
-    cduk.duk_get_prop_string(ctx, -1, "__duktape_cfunc_nargs__")
-    nargs = cduk.duk_require_int(ctx, -1)
-    cduk.duk_pop(ctx)
+    if cduk.duk_has_prop_string(ctx, -1, "__duktape_cfunc_nargs__"):
+        cduk.duk_get_prop_string(ctx, -1, "__duktape_cfunc_nargs__")
+        nargs = cduk.duk_require_int(ctx, -1)
+        cduk.duk_pop(ctx)
 
     cduk.duk_get_prop_string(ctx, -1, "__duktape_cfunc_pointer__")
-    ptr = cduk.duk_require_pointer(ctx, -1)
-    func = <object>ptr
+    func = <object>cduk.duk_get_pointer(ctx, -1)
     cduk.duk_pop(ctx)
 
     cduk.duk_pop(ctx)
@@ -166,8 +166,9 @@ cdef to_js_func(cduk.duk_context *ctx, pyfunc):
     cduk.duk_set_finalizer(ctx, -2)  # [ ... js_func_wrapper ]
     cduk.duk_push_pointer(ctx, <void*>func)  # [ ... js_func_wrapper func ]
     cduk.duk_put_prop_string(ctx, -2, "__duktape_cfunc_pointer__")  # [ ... js_func_wrapper ]
-    cduk.duk_push_number(ctx, nargs)  # [ ... js_func_wrapper nargs ]
-    cduk.duk_put_prop_string(ctx, -2, "__duktape_cfunc_nargs__")   # [ ... js_func_wrapper ]
+    if nargs is not None:
+        cduk.duk_push_number(ctx, nargs)  # [ ... js_func_wrapper nargs ]
+        cduk.duk_put_prop_string(ctx, -2, "__duktape_cfunc_nargs__")   # [ ... js_func_wrapper ]
 
 
 cdef to_js_array(cduk.duk_context *ctx, lst):
@@ -200,10 +201,12 @@ cdef to_js(cduk.duk_context *ctx, value):
         cduk.duk_push_number(ctx, value)
     elif isinstance(value, (list, tuple)):
         to_js_array(ctx, value)
-    elif isinstance(value, PyFunc):
-        to_js_func(ctx, value)
     elif isinstance(value, dict):
         to_js_dict(ctx, value)
+    elif callable(value):
+        to_js_func(ctx, PyFunc(value))
+    elif isinstance(value, PyFunc):
+        to_js_func(ctx, value)
 
 
 class Type:
