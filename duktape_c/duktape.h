@@ -6,7 +6,7 @@
  *  comments.  Other parts of the header are Duktape internal and related to
  *  e.g. platform/compiler/feature detection.
  *
- *  Git commit 99d7821050facc558cc2e5fec2ef0c59ba0a2eab (99d7821-dirty).
+ *  Git commit c1089234c6a13d08792d0e0d9d5bc4a512f99696 (c108923-dirty).
  *  Git branch master.
  *
  *  See Duktape AUTHORS.rst and LICENSE.txt for copyright and
@@ -171,8 +171,8 @@
  * which Duktape snapshot was used.  Not available in the ECMAScript
  * environment.
  */
-#define DUK_GIT_COMMIT                    "99d7821050facc558cc2e5fec2ef0c59ba0a2eab"
-#define DUK_GIT_DESCRIBE                  "99d7821-dirty"
+#define DUK_GIT_COMMIT                    "c1089234c6a13d08792d0e0d9d5bc4a512f99696"
+#define DUK_GIT_DESCRIBE                  "c108923-dirty"
 #define DUK_GIT_BRANCH                    "master"
 
 /* External duk_config.h provides platform/compiler/OS dependent

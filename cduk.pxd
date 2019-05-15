@@ -51,6 +51,7 @@ cdef extern from "duktape_c/duktape.h":
     void *duk_get_heapptr(duk_context *ctx, duk_idx_t idx)
     duk_size_t duk_get_length(duk_context *ctx, duk_idx_t idx)
     const char *duk_get_lstring(duk_context *ctx, duk_idx_t idx, duk_size_t *out_len)
+    const char *duk_require_string(duk_context *ctx, duk_idx_t idx)
     duk_double_t duk_get_number(duk_context *ctx, duk_idx_t idx)
     duk_bool_t duk_get_prop(duk_context *ctx, duk_idx_t obj_idx)
     duk_bool_t duk_get_prop_index(duk_context *ctx, duk_idx_t obj_idx, duk_uarridx_t arr_idx)
@@ -114,3 +115,6 @@ cdef extern from "duktape_c/duktape.h":
 
 cdef extern from "fileio.c":
     void fileio_push_file_string(duk_context *ctx, const char *filename)
+
+cdef extern from 'duktape_c/duk_module_duktape.c':
+    cdef void duk_module_duktape_init(duk_context *ctx)

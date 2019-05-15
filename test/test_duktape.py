@@ -1,3 +1,4 @@
+import os
 import gc
 import tempfile
 
@@ -146,6 +147,7 @@ def test_load_file_using_strict():
     assert ctx['a'] == 10
     assert ctx['b'] == 20
 
+
 def test_load_file_using_strict_and_this():
     ctx = duktape.Context()
     with tempfile.NamedTemporaryFile() as tf1:
@@ -159,3 +161,13 @@ def test_load_file_using_strict_and_this():
 
     assert ctx['a'] == 10
     assert ctx['b'] == 20
+
+
+def test_module_loading():
+    with tempfile.NamedTemporaryFile(suffix='.js') as tf:
+        tf.write(b"module.exports = 'Hello world!'; ");
+        tf.flush()
+        ctx = duktape.Context(module_path=os.path.dirname(tf.name))
+        ctx.eval('var msg = require("' + os.path.basename(tf.name) + '");')
+
+    assert ctx['msg'] == 'Hello world!'

@@ -1,6 +1,7 @@
 cimport cduk
 cimport cpython
 
+import os
 import threading
 import sys
 from libc.stdio cimport printf
@@ -40,6 +41,19 @@ cdef duk_reraise(cduk.duk_context *ctx, cduk.duk_int_t rc):
             raise Error(force_unicode(stack_trace))
         else:
             raise Error(force_unicode(cduk.duk_safe_to_string(ctx, -1)))
+
+
+cdef cduk.duk_ret_t duk_mod_search(cduk.duk_context *ctx):
+    cduk.duk_push_current_function(ctx)
+    cduk.duk_get_prop_string(ctx, -1, '__duktape_module_path__')
+    mod_path = cduk.duk_require_string(ctx, -1)
+    cduk.duk_pop_n(ctx, 2)
+
+    mod_file = os.path.join(mod_path, cduk.duk_require_string(ctx, -1))
+    if not mod_file.endswith('.js'):
+        mod_file += '.js'
+    cduk.fileio_push_file_string(ctx, smart_str(mod_file))
+    return 1
 
 
 class PyFunc:
@@ -244,9 +258,11 @@ class Type:
 cdef class Context:
 
     cdef cduk.duk_context *ctx
+    cdef object module_path
 
-    def __cinit__(self):
+    def __init__(self, module_path=None):
         self.ctx = cduk.duk_create_heap_default()
+        self.module_path = module_path
         self.setup()
 
     def __dealloc__(self):
@@ -259,6 +275,15 @@ cdef class Context:
         cduk.duk_push_object(self.ctx)
         cduk.duk_put_prop_string(self.ctx, -2, "_ref_map")
         cduk.duk_pop(self.ctx)
+
+        if self.module_path:
+            cduk.duk_module_duktape_init(self.ctx)
+            cduk.duk_get_global_string(self.ctx, 'Duktape')
+            cduk.duk_push_c_function(self.ctx, duk_mod_search, 1)
+            cduk.duk_push_string(self.ctx, self.module_path)
+            cduk.duk_put_prop_string(self.ctx, -2, "__duktape_module_path__")
+            cduk.duk_put_prop_string(self.ctx, -2, 'modSearch')
+            cduk.duk_pop(self.ctx)
 
     def __setitem__(self, key, value):
         to_js(self.ctx, value)
