@@ -69,6 +69,6 @@ def test_push_gettype():
 
 def test_push_get():
     ctx = duktape.Context()
-    for v in ["123", 123., True, False, [1, 2, 3], [[1]], {"a": 1, "b": 2}]:
+    for v in ["foo", u"foo", 123.0, 123, 123.5, True, False, [1, 2, 3], [[1]], {"a": 1, "b": 2}]:
         ctx._push(v)
         assert v == ctx._get()

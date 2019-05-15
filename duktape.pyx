@@ -18,7 +18,7 @@ cdef force_unicode(b):
 
 
 cdef smart_str(s):
-    return s.encode("utf-8")
+    return s.encode("utf-8") if isinstance(s, unicode) else s
 
 
 cdef duk_reraise(cduk.duk_context *ctx, cduk.duk_int_t rc):
@@ -185,8 +185,8 @@ cdef to_js_dict(cduk.duk_context *ctx, dct):
 cdef to_js(cduk.duk_context *ctx, value):
     if value is None:
         cduk.duk_push_null(ctx)
-    elif isinstance(value, str):
-        cduk.duk_push_lstring(ctx, smart_str(value), len(value))
+    elif isinstance(value, basestring):
+        cduk.duk_push_string(ctx, smart_str(value))
     elif isinstance(value, bool):
         if value:
             cduk.duk_push_true(ctx)
