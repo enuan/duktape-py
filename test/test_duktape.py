@@ -171,3 +171,13 @@ def test_module_loading():
         ctx.eval('var msg = require("' + os.path.basename(tf.name) + '");')
 
     assert ctx['msg'] == 'Hello world!'
+
+
+def test_js_func_invocation_after_context_gc():
+    ctx = duktape.Context()
+    ctx.eval("function foo(x) { return x*2; }")
+    foo = ctx['foo']
+    del ctx
+    gc.collect()
+
+    assert foo(10) == 20

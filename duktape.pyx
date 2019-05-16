@@ -63,34 +63,38 @@ class PyFunc:
         self.nargs = nargs
 
 
-cdef to_python_string(cduk.duk_context *ctx, cduk.duk_idx_t idx):
+cdef to_python_string(Context pyctx, cduk.duk_idx_t idx):
+    cdef cduk.duk_context *ctx = pyctx.ctx
     cdef cduk.duk_size_t strlen
     cdef const char *buf = cduk.duk_get_lstring(ctx, idx, &strlen)
     return force_unicode(buf[:strlen])
 
 
-cdef to_python_list(cduk.duk_context *ctx, cduk.duk_idx_t idx):
+cdef to_python_list(Context pyctx, cduk.duk_idx_t idx):
+    cdef cduk.duk_context *ctx = pyctx.ctx
     ret = []
     for i in range(cduk.duk_get_length(ctx, idx)):
         cduk.duk_get_prop_index(ctx, idx, i)
-        ret.append(to_python(ctx, -1))
+        ret.append(to_python(pyctx, -1))
         cduk.duk_pop(ctx)
     return ret
 
 
-cdef to_python_dict(cduk.duk_context *ctx, cduk.duk_idx_t idx):
+cdef to_python_dict(Context pyctx, cduk.duk_idx_t idx):
+    cdef cduk.duk_context *ctx = pyctx.ctx
     ret = {}
     cduk.duk_enum(ctx, idx, cduk.DUK_ENUM_OWN_PROPERTIES_ONLY)
     while cduk.duk_next(ctx, idx, 1):
-        ret[to_python(ctx, -2)] = to_python(ctx, -1)
+        ret[to_python(pyctx, -2)] = to_python(pyctx, -1)
         cduk.duk_pop_n(ctx, 2)
     cduk.duk_pop_n(ctx, 1)
     return ret
 
 
-cdef to_python_func(cduk.duk_context *ctx, cduk.duk_idx_t idx):
+cdef to_python_func(Context pyctx, cduk.duk_idx_t idx):
     global _ref_map_next_id
 
+    cdef cduk.duk_context *ctx = pyctx.ctx
     cdef cduk.duk_int_t _ref_id = _ref_map_next_id
     _ref_map_next_id += 1
 
@@ -103,32 +107,36 @@ cdef to_python_func(cduk.duk_context *ctx, cduk.duk_idx_t idx):
     cduk.duk_put_prop(ctx, -3)  # [ ... stash _ref_map ]
     cduk.duk_pop_n(ctx, 2)
 
-    f = Func()
-    f.ctx = ctx
+    f = Func(pyctx)
     f._ref_id = _ref_id
     return f
 
 
 cdef class Func:
 
-    cdef cduk.duk_context *ctx
+    cdef Context pyctx
     cdef cduk.duk_int_t _ref_id
 
+    def __init__(self, Context pyctx):
+        self.pyctx = pyctx
+
     def __call__(self, *args):
-        ctx = self.ctx
+        cdef cduk.duk_context *ctx = self.pyctx.ctx
+
         cduk.duk_push_global_stash(ctx)  # -> [ ... stash ]
         cduk.duk_get_prop_string(ctx, -1, "_ref_map")  # -> [ ... stash _ref_map ]
         cduk.duk_push_int(ctx, self._ref_id)  # -> [ ... stash _ref_map _ref_id ]
         cduk.duk_get_prop(ctx, -2)  # -> [ ... stash _ref_map func ]
         for arg in args:
-            to_js(ctx, arg)
+            to_js(self.pyctx, arg)
         duk_reraise(ctx, cduk.duk_pcall(ctx, len(args)))  # -> [ ... stash _ref_map retval ]
-        ret = to_python(ctx, -1)
+        ret = to_python(self.pyctx, -1)
         cduk.duk_pop_n(ctx, 3)
         return ret
 
 
-cdef to_python(cduk.duk_context *ctx, cduk.duk_idx_t idx):
+cdef to_python(Context pyctx, cduk.duk_idx_t idx):
+    cdef cduk.duk_context *ctx = pyctx.ctx
     if cduk.duk_is_boolean(ctx, idx):
         return bool(cduk.duk_get_boolean(ctx, idx))
     elif cduk.duk_is_nan(ctx, idx):
@@ -139,13 +147,13 @@ cdef to_python(cduk.duk_context *ctx, cduk.duk_idx_t idx):
         num = float(cduk.duk_get_number(ctx, idx))
         return int(num) if num.is_integer() else num
     elif cduk.duk_is_string(ctx, idx):
-        return to_python_string(ctx, idx)
+        return to_python_string(pyctx, idx)
     elif cduk.duk_is_array(ctx, idx):
-        return to_python_list(ctx, idx)
+        return to_python_list(pyctx, idx)
     elif cduk.duk_is_function(ctx, idx):
-        return to_python_func(ctx, idx)
+        return to_python_func(pyctx, idx)
     elif cduk.duk_is_object(ctx, idx):
-        return to_python_dict(ctx, idx)
+        return to_python_dict(pyctx, idx)
     else:
         return 'unknown'
         # raise TypeError("not_coercible", cduk.duk_get_type(ctx, idx))
@@ -154,6 +162,11 @@ cdef to_python(cduk.duk_context *ctx, cduk.duk_idx_t idx):
 cdef cduk.duk_ret_t js_func_wrapper(cduk.duk_context *ctx):
     # [ args... ]
     cdef cduk.duk_int_t nargs
+
+    cduk.duk_push_global_stash(ctx)
+    cduk.duk_get_prop_string(ctx, -1, "_pyctx_pointer")
+    pyctx = <Context>cduk.duk_get_pointer(ctx, -1)
+    cduk.duk_pop_n(ctx, 2)
 
     nargs = cduk.duk_get_top(ctx)
     cduk.duk_push_current_function(ctx)
@@ -169,8 +182,8 @@ cdef cduk.duk_ret_t js_func_wrapper(cduk.duk_context *ctx):
 
     cduk.duk_pop(ctx)
 
-    args = [to_python(ctx, idx) for idx in range(nargs)]
-    to_js(ctx, func(*args))
+    args = [to_python(pyctx, idx) for idx in range(nargs)]
+    to_js(pyctx, func(*args))
     return 1
 
 
@@ -182,7 +195,9 @@ cdef cduk.duk_ret_t js_func_finalizer(cduk.duk_context *ctx):
     return 0
 
 
-cdef to_js_func(cduk.duk_context *ctx, pyfunc):
+cdef to_js_func(Context pyctx, pyfunc):
+    cdef cduk.duk_context *ctx = pyctx.ctx
+
     func, nargs = pyfunc.func, pyfunc.nargs
     cpython.Py_INCREF(func)
     cduk.duk_push_c_function(ctx, js_func_wrapper, -1)  # [ ... js_func_wrapper ]
@@ -195,21 +210,27 @@ cdef to_js_func(cduk.duk_context *ctx, pyfunc):
         cduk.duk_put_prop_string(ctx, -2, "__duktape_cfunc_nargs__")   # [ ... js_func_wrapper ]
 
 
-cdef to_js_array(cduk.duk_context *ctx, lst):
+cdef to_js_array(Context pyctx, lst):
+    cdef cduk.duk_context *ctx = pyctx.ctx
+
     cduk.duk_push_array(ctx)
     for i, value in enumerate(lst):
-        to_js(ctx, value)
+        to_js(pyctx, value)
         cduk.duk_put_prop_index(ctx, -2, i)
 
 
-cdef to_js_dict(cduk.duk_context *ctx, dct):
+cdef to_js_dict(Context pyctx, dct):
+    cdef cduk.duk_context *ctx = pyctx.ctx
+
     cduk.duk_push_object(ctx)
     for key, value in dct.items():
-        to_js(ctx, value)
+        to_js(pyctx, value)
         cduk.duk_put_prop_string(ctx, -2, smart_str(key))
 
 
-cdef to_js(cduk.duk_context *ctx, value):
+cdef to_js(Context pyctx, value):
+    cdef cduk.duk_context *ctx = pyctx.ctx
+
     if value is None:
         cduk.duk_push_null(ctx)
     elif isinstance(value, basestring):
@@ -224,13 +245,13 @@ cdef to_js(cduk.duk_context *ctx, value):
     elif isinstance(value, float):
         cduk.duk_push_number(ctx, value)
     elif isinstance(value, (list, tuple)):
-        to_js_array(ctx, value)
+        to_js_array(pyctx, value)
     elif isinstance(value, dict):
-        to_js_dict(ctx, value)
+        to_js_dict(pyctx, value)
     elif callable(value):
-        to_js_func(ctx, PyFunc(value))
+        to_js_func(pyctx, PyFunc(value))
     elif isinstance(value, PyFunc):
-        to_js_func(ctx, value)
+        to_js_func(pyctx, value)
 
 
 class Type:
@@ -272,6 +293,8 @@ cdef class Context:
 
     def setup(self):
         cduk.duk_push_global_stash(self.ctx)
+        cduk.duk_push_pointer(self.ctx, <void*>self)
+        cduk.duk_put_prop_string(self.ctx, -2, "_pyctx_pointer")
         cduk.duk_push_object(self.ctx)
         cduk.duk_put_prop_string(self.ctx, -2, "_ref_map")
         cduk.duk_pop(self.ctx)
@@ -286,12 +309,12 @@ cdef class Context:
             cduk.duk_pop(self.ctx)
 
     def __setitem__(self, key, value):
-        to_js(self.ctx, value)
+        to_js(self, value)
         cduk.duk_put_global_string(self.ctx, smart_str(key))
 
     def __getitem__(self, key):
         cduk.duk_get_global_string(self.ctx, smart_str(key))
-        return to_python(self.ctx, -1)
+        return to_python(self, -1)
 
     def __len__(self):
         return cduk.duk_get_top(self.ctx)
@@ -324,7 +347,7 @@ cdef class Context:
         # Eval code: compiles into a function with zero arguments, which
         # executes like an ECMAScript eval call
         duk_reraise(self.ctx, cduk.duk_peval_string(self.ctx, smart_str(js)))
-        return to_python(self.ctx, -1)
+        return to_python(self, -1)
 
     loads = eval
 
@@ -332,10 +355,10 @@ cdef class Context:
         cduk.duk_gc(self.ctx, 0)
 
     def _get(self):
-        return to_python(self.ctx, -1)
+        return to_python(self, -1)
 
     def _push(self, value):
-        to_js(self.ctx, value)
+        to_js(self, value)
 
     def _type(self, idx=-1):
         return Type(cduk.duk_get_type(self.ctx, idx))
