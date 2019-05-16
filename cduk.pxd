@@ -38,6 +38,8 @@ cdef extern from "duktape_c/duktape.h":
 
     unsigned int DUK_ENUM_OWN_PROPERTIES_ONLY
 
+    duk_int_t DUK_VARARGS
+
     void duk_concat(duk_context *ctx, duk_idx_t count)
     duk_context *duk_create_heap(duk_alloc_function alloc_func, duk_realloc_function realloc_func, duk_free_function free_func, void *heap_udata, duk_fatal_function fatal_handler)
     duk_context *duk_create_heap_default() # macro

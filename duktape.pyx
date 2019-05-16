@@ -200,7 +200,8 @@ cdef to_js_func(Context pyctx, pyfunc):
 
     func, nargs = pyfunc.func, pyfunc.nargs
     cpython.Py_INCREF(func)
-    cduk.duk_push_c_function(ctx, js_func_wrapper, -1)  # [ ... js_func_wrapper ]
+    cduk.duk_push_c_function(ctx, js_func_wrapper,
+                             nargs if nargs is not None else cduk.DUK_VARARGS)  # [ ... js_func_wrapper ]
     cduk.duk_push_c_function(ctx, js_func_finalizer, -1)  # [ ... js_func_wrapper js_func_finalizer ]
     cduk.duk_set_finalizer(ctx, -2)  # [ ... js_func_wrapper ]
     cduk.duk_push_pointer(ctx, <void*>func)  # [ ... js_func_wrapper func ]
