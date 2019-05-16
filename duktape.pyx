@@ -22,6 +22,31 @@ cdef smart_str(s):
     return s.encode("utf-8") if isinstance(s, unicode) else s
 
 
+cdef unicode_encode_cesu8(ustring):
+    # python transposition of duk_unicode_encode_cesu8(duk_ucodepoint_t cp, duk_uint8_t *out)
+    out = []
+    for uchar in ustring:
+        x = ord(uchar)
+        if x < 0x80:
+            out.extend([chr(x)])
+        elif x < 0x800:
+            out.extend([chr(0xc0 + ((x >> 6) & 0x1f)),
+                        chr(0x80 + (x & 0x3f))])
+        elif x < 0x10000:
+            out.extend([chr(0xe0 + ((x >> 12) & 0x0f)),
+                        chr(0x80 + ((x >> 6) & 0x3f)),
+                        chr(0x80 + (x & 0x3f))])
+        else:
+            x -= 0x10000
+            out.extend([chr(0xed),
+                        chr(0xa0 + ((x >> 16) & 0x0f)),
+                        chr(0x80 + ((x >> 10) & 0x3f)),
+                        chr(0xed),
+                        chr(0xb0 + ((x >> 6) & 0x0f)),
+                        chr(0x80 + (x & 0x3f))])
+    return ''.join(out)
+
+
 cdef duk_context_dump(cduk.duk_context *ctx):
     cduk.duk_push_context_dump(ctx)
     dump = force_unicode(cduk.duk_to_string(ctx, -1))
@@ -235,7 +260,9 @@ cdef to_js(Context pyctx, value):
     if value is None:
         cduk.duk_push_null(ctx)
     elif isinstance(value, basestring):
-        cduk.duk_push_string(ctx, smart_str(value))
+        if isinstance(value, unicode):
+            value = unicode_encode_cesu8(value)
+        cduk.duk_push_string(ctx, value)
     elif isinstance(value, bool):
         if value:
             cduk.duk_push_true(ctx)

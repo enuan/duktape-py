@@ -181,3 +181,22 @@ def test_js_func_invocation_after_context_gc():
     gc.collect()
 
     assert foo(10) == 20
+
+
+def test_cesu8_push_string():
+    ctx = duktape.Context()
+    ctx.eval("""
+    function charCodeAt(str, idx) {
+        return str.charCodeAt(idx);
+    }
+    function codePointAt(str, idx) {
+        return str.codePointAt(idx);
+    }""")
+
+    assert ctx['charCodeAt'](u'\xe0', 0) == 224
+    assert ctx['codePointAt'](u'\xe0', 0) == 224
+
+    smile_emoji = u'\U0001f600'
+    assert ctx['charCodeAt'](smile_emoji, 0) == 55357
+    assert ctx['charCodeAt'](smile_emoji, 1) == 56832
+    assert ctx['codePointAt'](smile_emoji, 0) == 128512
