@@ -344,6 +344,9 @@ cdef class Context:
             cduk.duk_put_prop_string(self.ctx, -2, 'modSearch')
             cduk.duk_pop(self.ctx)
 
+    def __bool__(self):
+        return True
+
     def __setitem__(self, key, value):
         to_js(self, value)
         cduk.duk_put_global_string(self.ctx, smart_str(key))
