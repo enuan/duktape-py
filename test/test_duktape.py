@@ -1,6 +1,9 @@
 import os
 import gc
+import random
 import tempfile
+import threading
+import time
 
 import duktape
 import pytest
@@ -200,3 +203,81 @@ def test_cesu8_push_string():
     assert ctx['charCodeAt'](smile_emoji, 0) == 55357
     assert ctx['charCodeAt'](smile_emoji, 1) == 56832
     assert ctx['codePointAt'](smile_emoji, 0) == 128512
+
+
+def test_thread_basic():
+    ctx = duktape.Context()
+    ctx['foo'] = 10
+
+    th = ctx.new_thread(new_globalenv=False)
+    assert th['foo'] is 10
+    th['bar'] = 20
+    assert th['bar'] == 20
+    assert ctx['bar'] == 20
+
+
+def test_thread_new_globalenv():
+    ctx = duktape.Context()
+    ctx['foo'] = 10
+
+    th = ctx.new_thread(new_globalenv=True)
+    assert th['foo'] is None
+    th['bar'] = 20
+    assert th['bar'] == 20
+    assert ctx['bar'] is None
+
+
+def test_thread_garbage_collection():
+
+    class Sum(object):
+        collected = False
+        def __call__(self, x, y): return x+y
+        def __del__(self): Sum.collected = True
+
+    ctx = duktape.Context()
+    th = ctx.new_thread(new_globalenv=True)
+    th['sum'] = Sum()
+    assert th.eval('sum(1,2)') == 3
+
+    del th
+    # force duktape garbage collection
+    ctx.gc()
+    assert Sum.collected is True
+
+
+def test_thread_suspend_and_resume():
+    ctx = duktape.Context()
+    done_set = set()
+
+    def worker(thctx, i):
+        def sleep():
+            # without suspend/resume this test fails with a fatal error:
+            # *** longjmp causes uninitialized stack frame ***
+            state = thctx.suspend()
+            time.sleep(random.uniform(0, 1))
+            thctx.resume(state)
+        thctx['sleep'] = sleep
+        def done(s):
+            print s
+            done_set.add(i)
+        thctx['done'] = done
+
+        # inspired by duktape/tests/api/test-suspend-resume.c
+        # test_suspend_resume_reterr_basic
+        thctx.eval("""
+            sleep();
+            try {
+                throw 'worker %s executing';
+            } catch (e) {
+                done(e);
+            }""" % i);
+
+    workers = list()
+    for i in range(1, 11):
+        t = threading.Thread(target=worker, args=(ctx.new_thread(True), i))
+        workers.append(t)
+        t.start()
+    for t in workers:
+        t.join()
+
+    assert done_set == set(range(1, 11))

@@ -188,9 +188,15 @@ cdef cduk.duk_ret_t js_func_wrapper(cduk.duk_context *ctx):
     # [ args... ]
     cdef cduk.duk_int_t nargs
 
-    cduk.duk_push_global_stash(ctx)
-    cduk.duk_get_prop_string(ctx, -1, "_pyctx_pointer")
-    pyctx = <Context>cduk.duk_get_pointer(ctx, -1)
+    cduk.duk_push_thread_stash(ctx, ctx)
+    cduk.duk_get_prop_string(ctx, -1, "_pythr_pointer")
+    if cduk.duk_is_undefined(ctx, -1):
+        cduk.duk_pop_n(ctx, 2)
+        cduk.duk_push_global_stash(ctx)
+        cduk.duk_get_prop_string(ctx, -1, "_pyctx_pointer")
+        pyctx = <Context>cduk.duk_get_pointer(ctx, -1)
+    else:
+        pyctx = <ThreadContext>cduk.duk_get_pointer(ctx, -1)
     cduk.duk_pop_n(ctx, 2)
 
     nargs = cduk.duk_get_top(ctx)
@@ -325,6 +331,8 @@ cdef class Context:
         cduk.duk_put_prop_string(self.ctx, -2, "_pyctx_pointer")
         cduk.duk_push_object(self.ctx)
         cduk.duk_put_prop_string(self.ctx, -2, "_ref_map")
+        cduk.duk_push_object(self.ctx)
+        cduk.duk_put_prop_string(self.ctx, -2, "_threads")
         cduk.duk_pop(self.ctx)
 
         if self.module_path:
@@ -390,3 +398,65 @@ cdef class Context:
 
     def _type(self, idx=-1):
         return Type(cduk.duk_get_type(self.ctx, idx))
+
+    def new_thread(self, new_globalenv):
+        return ThreadContext(self, new_globalenv)
+
+
+cdef class ThreadContext(Context):
+
+    cdef Context parent_pyctx
+
+    def __init__(self, Context parent_pyctx, new_globalenv):
+        self.parent_pyctx = parent_pyctx
+        self.module_path = parent_pyctx.module_path
+        cduk.duk_push_global_stash(self.parent_pyctx.ctx)                   # [ ... stash ]
+        cduk.duk_get_prop_string(self.parent_pyctx.ctx, -1, "_threads")     # [ ... stash _threads ]
+        if new_globalenv:
+            thr_idx = cduk.duk_push_thread_new_globalenv(parent_pyctx.ctx)  # [ ... stash _threads thread ]
+            self.ctx = cduk.duk_get_context(parent_pyctx.ctx, thr_idx)
+            self.setup()
+        else:
+            thr_idx = cduk.duk_push_thread(parent_pyctx.ctx)                # [ ... stash _threads thread ]
+            self.ctx = cduk.duk_get_context(parent_pyctx.ctx, thr_idx)
+            cduk.duk_push_thread_stash(self.ctx, self.ctx)
+            cduk.duk_push_pointer(self.ctx, <void*>self)
+            cduk.duk_put_prop_string(self.ctx, -2, "_pythr_pointer")
+            cduk.duk_pop(self.ctx)
+        # Store a reference to the thread so that it is reachable from a
+        # garbage collection point of view
+        cduk.duk_put_prop_string(self.parent_pyctx.ctx, -2, str(id(self)))  # [ ... stash _threads ]
+        cduk.duk_pop_n(self.parent_pyctx.ctx, 2) # [ ... ]
+
+    def __dealloc__(self):
+        # Cython: When subclassing extension types, be aware that the
+        # __dealloc__() method of the superclass will always be called, even if
+        # it is overridden. This is in contrast to typical Python behavior
+        # where superclass methods will not be executed unless they are
+        # explicitly called by the subclass.
+        #
+        # We MUST prevent destroying the parent pyctx context heap by setting
+        # self.ctx to NULL:
+        #
+        #   duk_destroy_heap: If ctx is NULL, the call is a no-op.
+        #
+        # Make the thread unreachable so that it can be garbage collected
+        # (assuming there are no other references to it)
+        cduk.duk_push_global_stash(self.parent_pyctx.ctx)                   # [ ... stash ]
+        cduk.duk_get_prop_string(self.parent_pyctx.ctx, -1, "_threads")     # [ ... stash _threads ]
+        cduk.duk_del_prop_string(self.parent_pyctx.ctx, -1, str(id(self)))
+        cduk.duk_pop_n(self.parent_pyctx.ctx, 2)                            # [ ... ]
+        self.ctx = NULL
+
+    def suspend(self):
+        state = ThreadState()
+        cduk.duk_suspend(self.ctx, &state.ts)
+        return state
+
+    def resume(self, ThreadState state):
+        cduk.duk_resume(self.ctx, &state.ts)
+
+
+cdef class ThreadState(object):
+
+    cdef cduk.duk_thread_state ts

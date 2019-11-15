@@ -23,6 +23,9 @@ cdef extern from "duktape_c/duktape.h":
         duk_c_function value
         duk_idx_t nargs
 
+    ctypedef struct duk_thread_state:
+        char data[128]
+
     unsigned int DUK_TYPE_NONE
     unsigned int DUK_TYPE_UNDEFINED
     unsigned int DUK_TYPE_NULL
@@ -67,6 +70,8 @@ cdef extern from "duktape_c/duktape.h":
     duk_bool_t duk_is_error(duk_context *ctx, duk_idx_t idx)
     duk_bool_t duk_is_function(duk_context *ctx, duk_idx_t idx)
     duk_bool_t duk_is_nan(duk_context *ctx, duk_idx_t idx)
+    duk_bool_t duk_is_null(duk_context *ctx, duk_idx_t idx)
+    duk_bool_t duk_is_undefined(duk_context *ctx, duk_idx_t idx)
     duk_bool_t duk_is_null_or_undefined(duk_context *ctx, duk_idx_t idx)
     duk_bool_t duk_is_number(duk_context *ctx, duk_idx_t idx)
     duk_bool_t duk_is_object(duk_context *ctx, duk_idx_t idx)
@@ -96,7 +101,6 @@ cdef extern from "duktape_c/duktape.h":
     duk_idx_t duk_push_object(duk_context *ctx)
     void duk_push_pointer(duk_context *ctx, void *p)
     const char *duk_push_string(duk_context *ctx, const char *str)
-    duk_idx_t duk_push_thread(duk_context *ctx)
     void duk_push_true(duk_context *ctx)
     void duk_push_undefined(duk_context *ctx)
     void duk_put_function_list(duk_context *ctx, duk_idx_t obj_idx, const duk_function_list_entry *funcs)
@@ -104,6 +108,9 @@ cdef extern from "duktape_c/duktape.h":
     duk_bool_t duk_put_prop(duk_context *ctx, duk_idx_t obj_idx)
     duk_bool_t duk_put_prop_index(duk_context *ctx, duk_idx_t obj_idx, duk_uarridx_t arr_idx)
     duk_bool_t duk_put_prop_string(duk_context *ctx, duk_idx_t obj_idx, const char *key)
+    duk_bool_t duk_del_prop(duk_context *ctx, duk_idx_t obj_idx)
+    duk_bool_t duk_del_prop_index(duk_context *ctx, duk_idx_t obj_idx, duk_uarridx_t arr_idx)
+    duk_bool_t duk_del_prop_string(duk_context *ctx, duk_idx_t obj_idx, const char *key)
     duk_c_function duk_require_c_function(duk_context *ctx, duk_idx_t idx)
     void duk_require_function(duk_context *ctx, duk_idx_t idx)
     duk_int_t duk_require_int(duk_context *ctx, duk_idx_t idx)
@@ -114,6 +121,11 @@ cdef extern from "duktape_c/duktape.h":
     const char *duk_safe_to_string(duk_context *ctx, duk_idx_t idx)
     void duk_set_finalizer(duk_context *ctx, duk_idx_t idx)
     const char *duk_to_string(duk_context *ctx, duk_idx_t idx)
+    duk_idx_t duk_push_thread(duk_context *ctx)
+    duk_idx_t duk_push_thread_new_globalenv(duk_context *ctx)
+    void duk_push_thread_stash(duk_context *ctx, duk_context *target_ctx)
+    void duk_suspend(duk_context *ctx, duk_thread_state *state)
+    void duk_resume(duk_context *ctx, const duk_thread_state *state)
 
 cdef extern from "fileio.c":
     void fileio_push_file_string(duk_context *ctx, const char *filename)
