@@ -1,10 +1,13 @@
 cimport cduk
 cimport cpython
 
+import datetime
 import os
 import threading
 import sys
 from libc.stdio cimport printf
+
+import pytz
 
 
 cdef cduk.duk_int_t _ref_map_next_id = 1
@@ -178,6 +181,16 @@ cdef to_python(Context pyctx, cduk.duk_idx_t idx):
     elif cduk.duk_is_function(ctx, idx):
         return to_python_func(pyctx, idx)
     elif cduk.duk_is_object(ctx, idx):
+        if cduk.duk_get_global_string(ctx, "Date") and cduk.duk_instanceof(ctx, idx-1, -1):
+            cduk.duk_pop(ctx)
+            cduk.duk_push_string(ctx, "getTime")
+            cduk.duk_pcall_prop(ctx, -2, 0)
+            epoch_ms = cduk.duk_get_number(ctx, idx)
+            cduk.duk_pop(ctx)
+            # always return an UTC datetime
+            return pytz.utc.localize(datetime.datetime.utcfromtimestamp(epoch_ms/1e3))
+        else:
+            cduk.duk_pop(ctx)
         return to_python_dict(pyctx, idx)
     else:
         return 'unknown'
@@ -260,6 +273,27 @@ cdef to_js_dict(Context pyctx, dct):
         cduk.duk_put_prop_string(ctx, -2, smart_str(key))
 
 
+UNIX_EPOCH = datetime.datetime.utcfromtimestamp(0)
+
+cdef to_js_datetime(Context pyctx, value):
+    cdef cduk.duk_context *ctx = pyctx.ctx
+    cduk.duk_get_global_string(ctx, "Date")         # [ ... Date ]
+    if isinstance(value, datetime.datetime):
+        # if tzinfo is None we assume UTC as timezone
+        if value.tzinfo:
+            # otherwise we localize to UTC
+            value = value.astimezone(pytz.utc).replace(tzinfo=None)
+    elif isinstance(value, datetime.date):
+        # push date as YYYY-MM-DD 00:00:00
+        value = datetime.datetime.combine(value, datetime.time.min)
+    elif isinstance(value, datetime.time):
+        # push time as 1970-01-01 HH:MM:SS
+        value = datetime.datetime.combine(UNIX_EPOCH.date(), value)
+    epoch_s = (value - UNIX_EPOCH).total_seconds()
+    cduk.duk_push_number(ctx, epoch_s*1e3)          # [ ... Date epoch_s ]
+    duk_reraise(ctx, cduk.duk_pnew(ctx, 1))         # [ ... retval ]
+
+
 cdef to_js(Context pyctx, value):
     cdef cduk.duk_context *ctx = pyctx.ctx
 
@@ -282,6 +316,10 @@ cdef to_js(Context pyctx, value):
         to_js_array(pyctx, value)
     elif isinstance(value, dict):
         to_js_dict(pyctx, value)
+    elif isinstance(value, (datetime.datetime,
+                            datetime.date,
+                            datetime.time)):
+        to_js_datetime(pyctx, value)
     elif callable(value):
         to_js_func(pyctx, PyFunc(value))
     elif isinstance(value, PyFunc):

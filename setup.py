@@ -14,6 +14,9 @@ setup(
             libraries=["m"],
         )
     ],
+    install_requires = [
+        'pytz',
+    ],
     author="Brian Rosner",
     author_email="brosner@gmail.com",
     url="https://github.com/brosner/duktape-py",

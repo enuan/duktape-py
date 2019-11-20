@@ -126,6 +126,8 @@ cdef extern from "duktape_c/duktape.h":
     void duk_push_thread_stash(duk_context *ctx, duk_context *target_ctx)
     void duk_suspend(duk_context *ctx, duk_thread_state *state)
     void duk_resume(duk_context *ctx, const duk_thread_state *state)
+    duk_bool_t duk_instanceof(duk_context *ctx, duk_idx_t idx1, duk_idx_t idx2)
+    duk_ret_t duk_pnew(duk_context *ctx, duk_idx_t nargs)
 
 cdef extern from "fileio.c":
     void fileio_push_file_string(duk_context *ctx, const char *filename)

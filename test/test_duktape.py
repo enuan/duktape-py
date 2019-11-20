@@ -1,4 +1,5 @@
 import os
+import datetime
 import gc
 import random
 import tempfile
@@ -7,6 +8,7 @@ import time
 
 import duktape
 import pytest
+import pytz
 
 # todo: unicode tests everywhere and strings with nulls (i.e. I'm relying on null termination)
 
@@ -209,7 +211,7 @@ def test_thread_basic():
     ctx = duktape.Context()
     ctx['foo'] = 10
 
-    th = ctx.new_thread(new_globalenv=False)
+    th = ctx.new_thread(False)
     assert th['foo'] is 10
     th['bar'] = 20
     assert th['bar'] == 20
@@ -220,7 +222,7 @@ def test_thread_new_globalenv():
     ctx = duktape.Context()
     ctx['foo'] = 10
 
-    th = ctx.new_thread(new_globalenv=True)
+    th = ctx.new_thread(True)
     assert th['foo'] is None
     th['bar'] = 20
     assert th['bar'] == 20
@@ -235,7 +237,7 @@ def test_thread_garbage_collection():
         def __del__(self): Sum.collected = True
 
     ctx = duktape.Context()
-    th = ctx.new_thread(new_globalenv=True)
+    th = ctx.new_thread(True)
     th['sum'] = Sum()
     assert th.eval('sum(1,2)') == 3
 
@@ -281,3 +283,24 @@ def test_thread_suspend_and_resume():
         t.join()
 
     assert done_set == set(range(1, 11))
+
+
+def test_push_datetime():
+    ctx = duktape.Context()
+
+    ctx['dt'] = datetime.datetime(2019, 11, 19, 20, 30, 15, 123456)
+    assert ctx['dt'] == datetime.datetime(2019, 11, 19, 20, 30, 15, 123000, tzinfo=pytz.utc)
+    ctx.eval('dt.toISOString()') == u'2019-11-19T20:30:15.123Z'
+
+    ctx['d'] = datetime.date(2019, 11, 19)
+    assert ctx['d'] == datetime.datetime(2019, 11, 19, tzinfo=pytz.utc)
+    ctx.eval('dt.toISOString()') == u'2019-11-19T00:00:00.000Z'
+
+    ctx['t'] = datetime.time(20, 30, 15, 123456)
+    assert ctx['t'] == datetime.datetime(1970, 1, 1, 20, 30, 15, 123000, tzinfo=pytz.utc)
+    ctx.eval('dt.toISOString()') == u'1970-01-01T20:30:15.123Z'
+
+    new_york_tz = pytz.timezone('America/New_York')
+    ctx['dt_ny'] = new_york_tz.localize(datetime.datetime(2019, 11, 19, 10, 30, 15, 123456))
+    assert ctx['dt_ny'] == datetime.datetime(2019, 11, 19, 15, 30, 15, 123000, tzinfo=pytz.utc)
+    ctx.eval('dt_ny.toISOString()') == u'2019-11-19T15:30:15.123Z'
