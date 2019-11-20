@@ -64,9 +64,9 @@ cdef duk_reraise(cduk.duk_context *ctx, cduk.duk_int_t rc):
     if rc:
         if cduk.duk_is_error(ctx, -1):
             cduk.duk_get_prop_string(ctx, -1, "stack")
-            stack_trace = cduk.duk_safe_to_string(ctx, -1)
+            stacktrace = cduk.duk_safe_to_stacktrace(ctx, -1)
             cduk.duk_pop(ctx)
-            raise Error(force_unicode(stack_trace))
+            raise Error(force_unicode(stacktrace))
         else:
             raise Error(force_unicode(cduk.duk_safe_to_string(ctx, -1)))
 
