@@ -22,7 +22,7 @@ cdef force_unicode(b):
 
 
 cdef smart_str(s):
-    return s.encode("utf-8") if isinstance(s, unicode) else s
+    return unicode_encode_cesu8(s) if isinstance(s, unicode) else s
 
 
 cdef unicode_encode_cesu8(ustring):
