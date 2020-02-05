@@ -63,7 +63,7 @@ cdef duk_context_dump(cduk.duk_context *ctx):
 cdef duk_reraise(cduk.duk_context *ctx, cduk.duk_int_t rc):
     if rc:
         if cduk.duk_is_error(ctx, -1):
-            cduk.duk_get_prop_string(ctx, -1, "stack")
+            cduk.duk_get_prop_string(ctx, -1, b"stack")
             stacktrace = cduk.duk_safe_to_stacktrace(ctx, -1)
             cduk.duk_pop(ctx)
             raise Error(force_unicode(stacktrace))
@@ -73,11 +73,11 @@ cdef duk_reraise(cduk.duk_context *ctx, cduk.duk_int_t rc):
 
 cdef cduk.duk_ret_t duk_mod_search(cduk.duk_context *ctx):
     cduk.duk_push_current_function(ctx)
-    cduk.duk_get_prop_string(ctx, -1, '__duktape_module_path__')
-    mod_path = cduk.duk_require_string(ctx, -1)
+    cduk.duk_get_prop_string(ctx, -1, b'__duktape_module_path__')
+    mod_path = force_unicode(cduk.duk_require_string(ctx, -1))
     cduk.duk_pop_n(ctx, 2)
 
-    mod_file = os.path.join(mod_path, cduk.duk_require_string(ctx, -1))
+    mod_file = os.path.join(mod_path, force_unicode(cduk.duk_require_string(ctx, -1)))
     if not mod_file.endswith('.js'):
         mod_file += '.js'
     cduk.fileio_push_file_string(ctx, smart_str(mod_file))
@@ -129,7 +129,7 @@ cdef to_python_func(Context pyctx, cduk.duk_idx_t idx):
     fidx = cduk.duk_normalize_index(ctx, idx)
 
     cduk.duk_push_global_stash(ctx)  # [ ... stash ]
-    cduk.duk_get_prop_string(ctx, -1, "_ref_map")  # [ ... stash _ref_map ]
+    cduk.duk_get_prop_string(ctx, -1, b"_ref_map")  # [ ... stash _ref_map ]
     cduk.duk_push_int(ctx, _ref_id)  # [ ... stash _ref_map id ]
     cduk.duk_dup(ctx, fidx)  # [ ... stash _ref_map id func ]
     cduk.duk_put_prop(ctx, -3)  # [ ... stash _ref_map ]
@@ -152,7 +152,7 @@ cdef class Func:
         cdef cduk.duk_context *ctx = self.pyctx.ctx
 
         cduk.duk_push_global_stash(ctx)  # -> [ ... stash ]
-        cduk.duk_get_prop_string(ctx, -1, "_ref_map")  # -> [ ... stash _ref_map ]
+        cduk.duk_get_prop_string(ctx, -1, b"_ref_map")  # -> [ ... stash _ref_map ]
         cduk.duk_push_int(ctx, self._ref_id)  # -> [ ... stash _ref_map _ref_id ]
         cduk.duk_get_prop(ctx, -2)  # -> [ ... stash _ref_map func ]
         for arg in args:
@@ -181,9 +181,9 @@ cdef to_python(Context pyctx, cduk.duk_idx_t idx):
     elif cduk.duk_is_function(ctx, idx):
         return to_python_func(pyctx, idx)
     elif cduk.duk_is_object(ctx, idx):
-        if cduk.duk_get_global_string(ctx, "Date") and cduk.duk_instanceof(ctx, idx-1, -1):
+        if cduk.duk_get_global_string(ctx, b"Date") and cduk.duk_instanceof(ctx, idx-1, -1):
             cduk.duk_pop(ctx)
-            cduk.duk_push_string(ctx, "getTime")
+            cduk.duk_push_string(ctx, b"getTime")
             cduk.duk_pcall_prop(ctx, -2, 0)
             epoch_ms = cduk.duk_get_number(ctx, idx)
             cduk.duk_pop(ctx)
@@ -202,11 +202,11 @@ cdef cduk.duk_ret_t js_func_wrapper(cduk.duk_context *ctx):
     cdef cduk.duk_int_t nargs
 
     cduk.duk_push_thread_stash(ctx, ctx)
-    cduk.duk_get_prop_string(ctx, -1, "_pythr_pointer")
+    cduk.duk_get_prop_string(ctx, -1, b"_pythr_pointer")
     if cduk.duk_is_undefined(ctx, -1):
         cduk.duk_pop_n(ctx, 2)
         cduk.duk_push_global_stash(ctx)
-        cduk.duk_get_prop_string(ctx, -1, "_pyctx_pointer")
+        cduk.duk_get_prop_string(ctx, -1, b"_pyctx_pointer")
         pyctx = <Context>cduk.duk_get_pointer(ctx, -1)
     else:
         pyctx = <ThreadContext>cduk.duk_get_pointer(ctx, -1)
@@ -215,12 +215,12 @@ cdef cduk.duk_ret_t js_func_wrapper(cduk.duk_context *ctx):
     nargs = cduk.duk_get_top(ctx)
     cduk.duk_push_current_function(ctx)
 
-    if cduk.duk_has_prop_string(ctx, -1, "__duktape_cfunc_nargs__"):
-        cduk.duk_get_prop_string(ctx, -1, "__duktape_cfunc_nargs__")
+    if cduk.duk_has_prop_string(ctx, -1, b"__duktape_cfunc_nargs__"):
+        cduk.duk_get_prop_string(ctx, -1, b"__duktape_cfunc_nargs__")
         nargs = cduk.duk_require_int(ctx, -1)
         cduk.duk_pop(ctx)
 
-    cduk.duk_get_prop_string(ctx, -1, "__duktape_cfunc_pointer__")
+    cduk.duk_get_prop_string(ctx, -1, b"__duktape_cfunc_pointer__")
     func = <object>cduk.duk_get_pointer(ctx, -1)
     cduk.duk_pop(ctx)
 
@@ -232,7 +232,7 @@ cdef cduk.duk_ret_t js_func_wrapper(cduk.duk_context *ctx):
 
 
 cdef cduk.duk_ret_t js_func_finalizer(cduk.duk_context *ctx):
-    cduk.duk_get_prop_string(ctx, 0, "__duktape_cfunc_pointer__")
+    cduk.duk_get_prop_string(ctx, 0, b"__duktape_cfunc_pointer__")
     func = <object>cduk.duk_get_pointer(ctx, -1)
     cduk.duk_pop(ctx)
     cpython.Py_DECREF(func)
@@ -249,10 +249,10 @@ cdef to_js_func(Context pyctx, pyfunc):
     cduk.duk_push_c_function(ctx, js_func_finalizer, -1)  # [ ... js_func_wrapper js_func_finalizer ]
     cduk.duk_set_finalizer(ctx, -2)  # [ ... js_func_wrapper ]
     cduk.duk_push_pointer(ctx, <void*>func)  # [ ... js_func_wrapper func ]
-    cduk.duk_put_prop_string(ctx, -2, "__duktape_cfunc_pointer__")  # [ ... js_func_wrapper ]
+    cduk.duk_put_prop_string(ctx, -2, b"__duktape_cfunc_pointer__")  # [ ... js_func_wrapper ]
     if nargs is not None:
         cduk.duk_push_number(ctx, nargs)  # [ ... js_func_wrapper nargs ]
-        cduk.duk_put_prop_string(ctx, -2, "__duktape_cfunc_nargs__")   # [ ... js_func_wrapper ]
+        cduk.duk_put_prop_string(ctx, -2, b"__duktape_cfunc_nargs__")   # [ ... js_func_wrapper ]
 
 
 cdef to_js_array(Context pyctx, lst):
@@ -277,7 +277,7 @@ UNIX_EPOCH = datetime.datetime.utcfromtimestamp(0)
 
 cdef to_js_datetime(Context pyctx, value):
     cdef cduk.duk_context *ctx = pyctx.ctx
-    cduk.duk_get_global_string(ctx, "Date")         # [ ... Date ]
+    cduk.duk_get_global_string(ctx, b"Date")         # [ ... Date ]
     if isinstance(value, datetime.datetime):
         # if tzinfo is None we assume UTC as timezone
         if value.tzinfo:
@@ -366,20 +366,20 @@ cdef class Context:
     def setup(self):
         cduk.duk_push_global_stash(self.ctx)
         cduk.duk_push_pointer(self.ctx, <void*>self)
-        cduk.duk_put_prop_string(self.ctx, -2, "_pyctx_pointer")
+        cduk.duk_put_prop_string(self.ctx, -2, b"_pyctx_pointer")
         cduk.duk_push_object(self.ctx)
-        cduk.duk_put_prop_string(self.ctx, -2, "_ref_map")
+        cduk.duk_put_prop_string(self.ctx, -2, b"_ref_map")
         cduk.duk_push_object(self.ctx)
-        cduk.duk_put_prop_string(self.ctx, -2, "_threads")
+        cduk.duk_put_prop_string(self.ctx, -2, b"_threads")
         cduk.duk_pop(self.ctx)
 
         if self.module_path:
             cduk.duk_module_duktape_init(self.ctx)
-            cduk.duk_get_global_string(self.ctx, 'Duktape')
+            cduk.duk_get_global_string(self.ctx, b'Duktape')
             cduk.duk_push_c_function(self.ctx, duk_mod_search, 1)
-            cduk.duk_push_string(self.ctx, self.module_path)
-            cduk.duk_put_prop_string(self.ctx, -2, "__duktape_module_path__")
-            cduk.duk_put_prop_string(self.ctx, -2, 'modSearch')
+            cduk.duk_push_string(self.ctx, smart_str(self.module_path))
+            cduk.duk_put_prop_string(self.ctx, -2, b"__duktape_module_path__")
+            cduk.duk_put_prop_string(self.ctx, -2, b'modSearch')
             cduk.duk_pop(self.ctx)
 
     def __bool__(self):
@@ -452,7 +452,7 @@ cdef class ThreadContext(Context):
         self.parent_pyctx = parent_pyctx
         self.module_path = parent_pyctx.module_path
         cduk.duk_push_global_stash(self.parent_pyctx.ctx)                   # [ ... stash ]
-        cduk.duk_get_prop_string(self.parent_pyctx.ctx, -1, "_threads")     # [ ... stash _threads ]
+        cduk.duk_get_prop_string(self.parent_pyctx.ctx, -1, b"_threads")     # [ ... stash _threads ]
         if new_globalenv:
             thr_idx = cduk.duk_push_thread_new_globalenv(parent_pyctx.ctx)  # [ ... stash _threads thread ]
             self.ctx = cduk.duk_get_context(parent_pyctx.ctx, thr_idx)
@@ -462,11 +462,11 @@ cdef class ThreadContext(Context):
             self.ctx = cduk.duk_get_context(parent_pyctx.ctx, thr_idx)
             cduk.duk_push_thread_stash(self.ctx, self.ctx)
             cduk.duk_push_pointer(self.ctx, <void*>self)
-            cduk.duk_put_prop_string(self.ctx, -2, "_pythr_pointer")
+            cduk.duk_put_prop_string(self.ctx, -2, b"_pythr_pointer")
             cduk.duk_pop(self.ctx)
         # Store a reference to the thread so that it is reachable from a
         # garbage collection point of view
-        cduk.duk_put_prop_string(self.parent_pyctx.ctx, -2, str(id(self)))  # [ ... stash _threads ]
+        cduk.duk_put_prop_string(self.parent_pyctx.ctx, -2, smart_str(str(id(self))))  # [ ... stash _threads ]
         cduk.duk_pop_n(self.parent_pyctx.ctx, 2) # [ ... ]
 
     def __dealloc__(self):
@@ -484,8 +484,8 @@ cdef class ThreadContext(Context):
         # Make the thread unreachable so that it can be garbage collected
         # (assuming there are no other references to it)
         cduk.duk_push_global_stash(self.parent_pyctx.ctx)                   # [ ... stash ]
-        cduk.duk_get_prop_string(self.parent_pyctx.ctx, -1, "_threads")     # [ ... stash _threads ]
-        cduk.duk_del_prop_string(self.parent_pyctx.ctx, -1, str(id(self)))
+        cduk.duk_get_prop_string(self.parent_pyctx.ctx, -1, b"_threads")     # [ ... stash _threads ]
+        cduk.duk_del_prop_string(self.parent_pyctx.ctx, -1, smart_str(str(id(self))))
         cduk.duk_pop_n(self.parent_pyctx.ctx, 2)                            # [ ... ]
         self.ctx = NULL
 
