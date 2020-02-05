@@ -53,7 +53,7 @@ def test_push_gettype():
         ctx._push(x)
         return ctx._type()
 
-    codes = map(push, [
+    codes = list(map(push, [
         "123",
         123,
         123.,
@@ -67,14 +67,14 @@ def test_push_gettype():
             "a": 1,
             "b": "2",
         }
-    ])
+    ]))
     expected = [str, float, float, bool, bool, type(None), object, object, object, object]
     assert [code.as_pytype() for code in codes] == expected
 
 
 def test_push_get():
     ctx = duktape.Context()
-    for v in ["foo", u"foo", 123.0, 123, 123.5, True, False, [1, 2, 3], [[1]], {"a": 1, "b": 2}]:
+    for v in ["foo", "foo", 123.0, 123, 123.5, True, False, [1, 2, 3], [[1]], {"a": 1, "b": 2}]:
         ctx._push(v)
         assert v == ctx._get()
 
@@ -118,9 +118,9 @@ def test_load_file_with_syntax_error():
 
         try:
             ctx.load(tf.name)
-        except duktape.Error, e:
+        except duktape.Error as e:
             # error contains filename and line number
-            assert '%s:2' % tf.name in unicode(e), e
+            assert '%s:2' % tf.name in str(e), e
 
 
 def test_load_file_using_this():
@@ -198,10 +198,10 @@ def test_cesu8_push_string():
         return str.codePointAt(idx);
     }""")
 
-    assert ctx['charCodeAt'](u'\xe0', 0) == 224
-    assert ctx['codePointAt'](u'\xe0', 0) == 224
+    assert ctx['charCodeAt']('\xe0', 0) == 224
+    assert ctx['codePointAt']('\xe0', 0) == 224
 
-    smile_emoji = u'\U0001f600'
+    smile_emoji = '\U0001f600'
     assert ctx['charCodeAt'](smile_emoji, 0) == 55357
     assert ctx['charCodeAt'](smile_emoji, 1) == 56832
     assert ctx['codePointAt'](smile_emoji, 0) == 128512
@@ -212,7 +212,7 @@ def test_thread_basic():
     ctx['foo'] = 10
 
     th = ctx.new_thread(False)
-    assert th['foo'] is 10
+    assert th['foo'] == 10
     th['bar'] = 20
     assert th['bar'] == 20
     assert ctx['bar'] == 20
@@ -260,7 +260,7 @@ def test_thread_suspend_and_resume():
             thctx.resume(state)
         thctx['sleep'] = sleep
         def done(s):
-            print s
+            print(s)
             done_set.add(i)
         thctx['done'] = done
 
@@ -290,17 +290,17 @@ def test_push_datetime():
 
     ctx['dt'] = datetime.datetime(2019, 11, 19, 20, 30, 15, 123456)
     assert ctx['dt'] == datetime.datetime(2019, 11, 19, 20, 30, 15, 123000, tzinfo=pytz.utc)
-    ctx.eval('dt.toISOString()') == u'2019-11-19T20:30:15.123Z'
+    ctx.eval('dt.toISOString()') == '2019-11-19T20:30:15.123Z'
 
     ctx['d'] = datetime.date(2019, 11, 19)
     assert ctx['d'] == datetime.datetime(2019, 11, 19, tzinfo=pytz.utc)
-    ctx.eval('dt.toISOString()') == u'2019-11-19T00:00:00.000Z'
+    ctx.eval('dt.toISOString()') == '2019-11-19T00:00:00.000Z'
 
     ctx['t'] = datetime.time(20, 30, 15, 123456)
     assert ctx['t'] == datetime.datetime(1970, 1, 1, 20, 30, 15, 123000, tzinfo=pytz.utc)
-    ctx.eval('dt.toISOString()') == u'1970-01-01T20:30:15.123Z'
+    ctx.eval('dt.toISOString()') == '1970-01-01T20:30:15.123Z'
 
     new_york_tz = pytz.timezone('America/New_York')
     ctx['dt_ny'] = new_york_tz.localize(datetime.datetime(2019, 11, 19, 10, 30, 15, 123456))
     assert ctx['dt_ny'] == datetime.datetime(2019, 11, 19, 15, 30, 15, 123000, tzinfo=pytz.utc)
-    ctx.eval('dt_ny.toISOString()') == u'2019-11-19T15:30:15.123Z'
+    ctx.eval('dt_ny.toISOString()') == '2019-11-19T15:30:15.123Z'

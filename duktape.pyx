@@ -18,36 +18,34 @@ class Error(Exception):
 
 
 cdef force_unicode(b):
-    return b.decode("utf-8")
-
-
-cdef smart_str(s):
-    return unicode_encode_cesu8(s) if isinstance(s, unicode) else s
+    return b.decode()
 
 
 cdef unicode_encode_cesu8(ustring):
     # python transposition of duk_unicode_encode_cesu8(duk_ucodepoint_t cp, duk_uint8_t *out)
-    out = []
+    out = b''
     for uchar in ustring:
         x = ord(uchar)
         if x < 0x80:
-            out.extend([chr(x)])
+            out += bytes([x])
         elif x < 0x800:
-            out.extend([chr(0xc0 + ((x >> 6) & 0x1f)),
-                        chr(0x80 + (x & 0x3f))])
+            out += bytes([0xc0 + ((x >> 6) & 0x1f),
+                          0x80 + (x & 0x3f)])
         elif x < 0x10000:
-            out.extend([chr(0xe0 + ((x >> 12) & 0x0f)),
-                        chr(0x80 + ((x >> 6) & 0x3f)),
-                        chr(0x80 + (x & 0x3f))])
+            out += bytes([0xe0 + ((x >> 12) & 0x0f),
+                          0x80 + ((x >> 6) & 0x3f),
+                          0x80 + (x & 0x3f)])
         else:
             x -= 0x10000
-            out.extend([chr(0xed),
-                        chr(0xa0 + ((x >> 16) & 0x0f)),
-                        chr(0x80 + ((x >> 10) & 0x3f)),
-                        chr(0xed),
-                        chr(0xb0 + ((x >> 6) & 0x0f)),
-                        chr(0x80 + (x & 0x3f))])
-    return ''.join(out)
+            out += bytes([0xed,
+                          0xa0 + ((x >> 16) & 0x0f),
+                          0x80 + ((x >> 10) & 0x3f),
+                          0xed,
+                          0xb0 + ((x >> 6) & 0x0f),
+                          0x80 + (x & 0x3f)])
+    return out
+
+smart_str = unicode_encode_cesu8
 
 
 cdef duk_context_dump(cduk.duk_context *ctx):
@@ -299,7 +297,7 @@ cdef to_js(Context pyctx, value):
 
     if value is None:
         cduk.duk_push_null(ctx)
-    elif isinstance(value, basestring):
+    elif isinstance(value, str):
         cduk.duk_push_string(ctx, smart_str(value))
     elif isinstance(value, bool):
         if value:
