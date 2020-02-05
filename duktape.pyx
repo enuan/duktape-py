@@ -300,9 +300,7 @@ cdef to_js(Context pyctx, value):
     if value is None:
         cduk.duk_push_null(ctx)
     elif isinstance(value, basestring):
-        if isinstance(value, unicode):
-            value = unicode_encode_cesu8(value)
-        cduk.duk_push_string(ctx, value)
+        cduk.duk_push_string(ctx, smart_str(value))
     elif isinstance(value, bool):
         if value:
             cduk.duk_push_true(ctx)
