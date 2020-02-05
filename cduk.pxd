@@ -129,6 +129,7 @@ cdef extern from "duktape_c/duktape.h":
     const char *duk_safe_to_stacktrace(duk_context *ctx, duk_idx_t idx)
     duk_bool_t duk_instanceof(duk_context *ctx, duk_idx_t idx1, duk_idx_t idx2)
     duk_ret_t duk_pnew(duk_context *ctx, duk_idx_t nargs)
+    duk_int_t duk_pcall_prop(duk_context *ctx, duk_idx_t obj_idx, duk_idx_t nargs)
 
 cdef extern from "fileio.c":
     void fileio_push_file_string(duk_context *ctx, const char *filename)
