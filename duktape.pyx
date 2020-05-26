@@ -187,8 +187,7 @@ cdef to_python(Context pyctx, cduk.duk_idx_t idx):
             cduk.duk_pcall_prop(ctx, -2, 0)
             epoch_ms = cduk.duk_get_number(ctx, idx)
             cduk.duk_pop(ctx)
-            # always return an UTC datetime
-            return pytz.utc.localize(datetime.datetime.utcfromtimestamp(epoch_ms/1e3))
+            return datetime.datetime.utcfromtimestamp(epoch_ms/1e3)
         else:
             cduk.duk_pop(ctx)
         return to_python_dict(pyctx, idx)

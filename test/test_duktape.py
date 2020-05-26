@@ -289,18 +289,18 @@ def test_push_datetime():
     ctx = duktape.Context()
 
     ctx['dt'] = datetime.datetime(2019, 11, 19, 20, 30, 15, 123456)
-    assert ctx['dt'] == datetime.datetime(2019, 11, 19, 20, 30, 15, 123000, tzinfo=pytz.utc)
+    assert ctx['dt'] == datetime.datetime(2019, 11, 19, 20, 30, 15, 123000)
     ctx.eval('dt.toISOString()') == '2019-11-19T20:30:15.123Z'
 
     ctx['d'] = datetime.date(2019, 11, 19)
-    assert ctx['d'] == datetime.datetime(2019, 11, 19, tzinfo=pytz.utc)
+    assert ctx['d'] == datetime.datetime(2019, 11, 19)
     ctx.eval('dt.toISOString()') == '2019-11-19T00:00:00.000Z'
 
     ctx['t'] = datetime.time(20, 30, 15, 123456)
-    assert ctx['t'] == datetime.datetime(1970, 1, 1, 20, 30, 15, 123000, tzinfo=pytz.utc)
+    assert ctx['t'] == datetime.datetime(1970, 1, 1, 20, 30, 15, 123000)
     ctx.eval('dt.toISOString()') == '1970-01-01T20:30:15.123Z'
 
     new_york_tz = pytz.timezone('America/New_York')
     ctx['dt_ny'] = new_york_tz.localize(datetime.datetime(2019, 11, 19, 10, 30, 15, 123456))
-    assert ctx['dt_ny'] == datetime.datetime(2019, 11, 19, 15, 30, 15, 123000, tzinfo=pytz.utc)
+    assert ctx['dt_ny'] == datetime.datetime(2019, 11, 19, 15, 30, 15, 123000)
     ctx.eval('dt_ny.toISOString()') == '2019-11-19T15:30:15.123Z'
