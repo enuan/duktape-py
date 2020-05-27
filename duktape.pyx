@@ -23,6 +23,10 @@ cdef force_unicode(b):
     return b.decode()
 
 
+cdef smart_str(s):
+    return unicode_encode_cesu8(s) if isinstance(s, str) else s
+
+
 cdef unicode_encode_cesu8(ustring):
     # python transposition of duk_unicode_encode_cesu8(duk_ucodepoint_t cp, duk_uint8_t *out)
     out = b''
@@ -47,7 +51,6 @@ cdef unicode_encode_cesu8(ustring):
                           0x80 + (x & 0x3f)])
     return out
 
-smart_str = unicode_encode_cesu8
 
 
 cdef duk_context_dump(cduk.duk_context *ctx):
