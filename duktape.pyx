@@ -52,6 +52,9 @@ cdef unicode_encode_cesu8(ustring):
     return out
 
 
+cdef DUK_HIDDEN_SYMBOL(symbol):
+    return b'\xFF' + symbol
+
 
 cdef duk_context_dump(cduk.duk_context *ctx):
     cduk.duk_push_context_dump(ctx)
