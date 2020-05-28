@@ -76,6 +76,7 @@ cdef extern from "duktape_c/duktape.h":
     duk_bool_t duk_is_number(duk_context *ctx, duk_idx_t idx)
     duk_bool_t duk_is_object(duk_context *ctx, duk_idx_t idx)
     duk_bool_t duk_is_string(duk_context *ctx, duk_idx_t idx)
+    duk_bool_t duk_is_symbol(duk_context *ctx, duk_idx_t idx)
     void duk_join(duk_context *ctx, duk_idx_t count)
     duk_bool_t duk_next(duk_context *ctx, duk_idx_t enum_idx, duk_bool_t get_value)
     duk_idx_t duk_normalize_index(duk_context *ctx, duk_idx_t idx)
@@ -116,6 +117,7 @@ cdef extern from "duktape_c/duktape.h":
     duk_int_t duk_require_int(duk_context *ctx, duk_idx_t idx)
     duk_double_t duk_require_number(duk_context *ctx, duk_idx_t idx)
     void *duk_get_pointer(duk_context *ctx, duk_idx_t idx)
+    const char *duk_get_string(duk_context *ctx, duk_idx_t idx)
     void *duk_require_pointer(duk_context *ctx, duk_idx_t idx)
     void duk_require_stack(duk_context *ctx, duk_idx_t extra)
     const char *duk_safe_to_string(duk_context *ctx, duk_idx_t idx)
@@ -130,6 +132,7 @@ cdef extern from "duktape_c/duktape.h":
     duk_bool_t duk_instanceof(duk_context *ctx, duk_idx_t idx1, duk_idx_t idx2)
     duk_ret_t duk_pnew(duk_context *ctx, duk_idx_t nargs)
     duk_int_t duk_pcall_prop(duk_context *ctx, duk_idx_t obj_idx, duk_idx_t nargs)
+    duk_idx_t duk_push_proxy(duk_context *ctx, duk_uint_t proxy_flags)
 
 cdef extern from "fileio.c":
     void fileio_push_file_string(duk_context *ctx, const char *filename)

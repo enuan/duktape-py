@@ -7,6 +7,7 @@ import datetime
 import os
 import threading
 import sys
+import struct
 from libc.stdio cimport printf
 
 import pytz
@@ -56,6 +57,19 @@ cdef DUK_HIDDEN_SYMBOL(symbol):
     return b'\xFF' + symbol
 
 
+cdef duk_get_global_dotted_string(Context pyctx, key):
+    parts = key.split(b'.')
+    if not cduk.duk_get_global_string(pyctx.ctx, parts[0]):
+        cduk.duk_pop(pyctx.ctx)
+        return False
+    for part in parts[1:]:
+        if not cduk.duk_get_prop_string(pyctx.ctx, -1, part):
+            cduk.duk_pop(pyctx.ctx)
+            return False
+        cduk.duk_remove(pyctx.ctx, -2)
+    return True
+
+
 cdef duk_context_dump(cduk.duk_context *ctx):
     cduk.duk_push_context_dump(ctx)
     dump = force_unicode(cduk.duk_to_string(ctx, -1))
@@ -98,10 +112,14 @@ class PyFunc:
 
 
 cdef to_python_string(Context pyctx, cduk.duk_idx_t idx):
+    return force_unicode(to_python_bytes(pyctx, idx))
+
+
+cdef to_python_bytes(Context pyctx, cduk.duk_idx_t idx):
     cdef cduk.duk_context *ctx = pyctx.ctx
     cdef cduk.duk_size_t strlen
     cdef const char *buf = cduk.duk_get_lstring(ctx, idx, &strlen)
-    return force_unicode(buf[:strlen])
+    return buf[:strlen]
 
 
 cdef to_python_list(Context pyctx, cduk.duk_idx_t idx):
@@ -187,13 +205,26 @@ cdef to_python(Context pyctx, cduk.duk_idx_t idx):
     elif cduk.duk_is_function(ctx, idx):
         return to_python_func(pyctx, idx)
     elif cduk.duk_is_object(ctx, idx):
-        if cduk.duk_get_global_string(ctx, b"Date") and cduk.duk_instanceof(ctx, idx-1, -1):
-            cduk.duk_pop(ctx)
-            cduk.duk_push_string(ctx, b"getTime")
-            cduk.duk_pcall_prop(ctx, -2, 0)
-            epoch_ms = cduk.duk_get_number(ctx, idx)
-            cduk.duk_pop(ctx)
-            return datetime.datetime.utcfromtimestamp(epoch_ms/1e3)
+        def instanceof(name):
+            if not duk_get_global_dotted_string(pyctx, smart_str(name)):
+                return False
+            try:
+                return bool(cduk.duk_instanceof(ctx, idx-1, -1))
+            finally:
+                cduk.duk_pop(ctx)
+
+        if instanceof(b"Date"):
+            cduk.duk_get_prop_string(pyctx.ctx, -1, DUK_HIDDEN_SYMBOL(b'epoch_usec'))
+            if not cduk.duk_is_undefined(ctx, -1):
+                epoch_s = struct.unpack('q', to_python_bytes(pyctx, -1))[0] / 1e6
+                cduk.duk_pop(ctx)
+            else:
+                cduk.duk_pop(ctx)
+                cduk.duk_push_string(ctx, b"getTime")
+                cduk.duk_pcall_prop(ctx, -2, 0)
+                epoch_s = cduk.duk_get_number(ctx, idx) / 1e3
+                cduk.duk_pop(ctx)
+            return datetime.datetime.utcfromtimestamp(epoch_s)
         else:
             cduk.duk_pop(ctx)
         return to_python_dict(pyctx, idx)
@@ -279,10 +310,20 @@ cdef to_js_dict(Context pyctx, dct):
 
 
 UNIX_EPOCH = datetime.datetime.utcfromtimestamp(0)
+USECS_IN_SEC = int(1e6)
+USECS_IN_DAY = 24 * 60 * 60 * USECS_IN_SEC
 
-cdef to_js_datetime(Context pyctx, value):
+
+cdef to_epoch_usec(dt):
+    assert dt.tzinfo is None
+    delta = dt - UNIX_EPOCH
+    return delta.days    * USECS_IN_DAY + \
+           delta.seconds * USECS_IN_SEC + \
+           delta.microseconds
+
+
+cdef to_js_date(Context pyctx, value):
     cdef cduk.duk_context *ctx = pyctx.ctx
-    cduk.duk_get_global_string(ctx, b"Date")         # [ ... Date ]
     if isinstance(value, datetime.datetime):
         # if tzinfo is None we assume UTC as timezone
         if value.tzinfo:
@@ -294,9 +335,61 @@ cdef to_js_datetime(Context pyctx, value):
     elif isinstance(value, datetime.time):
         # push time as 1970-01-01 HH:MM:SS
         value = datetime.datetime.combine(UNIX_EPOCH.date(), value)
-    epoch_s = (value - UNIX_EPOCH).total_seconds()
-    cduk.duk_push_number(ctx, epoch_s*1e3)          # [ ... Date epoch_s ]
-    duk_reraise(ctx, cduk.duk_pnew(ctx, 1))         # [ ... retval ]
+    epoch_usec = to_epoch_usec(value)
+    cduk.duk_get_global_string(ctx, b"Date")                            # [ ... Date ]
+    cduk.duk_push_number(ctx, epoch_usec/1e3)                           # [ ... Date epoch_s ]
+    duk_reraise(pyctx, cduk.duk_pnew(ctx, 1))                           # [ ... date ]
+    cduk.duk_push_lstring(ctx, <bytes>struct.pack('q', epoch_usec), 8)  # [ ... date usec]
+    cduk.duk_put_prop_string(ctx, -2, DUK_HIDDEN_SYMBOL(b'epoch_usec')) # [ ... date ]
+    cduk.duk_push_object(ctx)                                           # [ ... date handler ]
+    cduk.duk_push_c_function(ctx, js_date_proxy_get_handler, 3)         # [ ... date handler get_handler ]
+    cduk.duk_put_prop_string(ctx, -2, "get")                            # [ ... date handler ]
+    cduk.duk_push_proxy(ctx, 0)                                         # [ ... proxy ]
+
+
+cdef cduk.duk_ret_t js_date_proxy_get_handler(cduk.duk_context *ctx):
+    # 'this' binding: handler
+    #
+    # [0]: target
+    # [1]: prop
+    # [2]: receiver
+    #
+
+    if cduk.duk_has_prop_string(ctx, -1, DUK_HIDDEN_SYMBOL(b'epoch_usec')) and \
+            not cduk.duk_is_symbol(ctx, 1) and cduk.duk_get_string(ctx, 1).startswith(b'set'):
+        cduk.duk_push_c_function(ctx, js_date_proxy_set_wrapper,
+                                 cduk.DUK_VARARGS)
+        cduk.duk_dup(ctx, 0)
+        cduk.duk_put_prop_string(ctx, -2, DUK_HIDDEN_SYMBOL(b"date_target"))
+        cduk.duk_dup(ctx, 1)
+        cduk.duk_put_prop_string(ctx, -2, DUK_HIDDEN_SYMBOL(b"date_prop"))
+    else:
+        cduk.duk_pop(ctx)
+        cduk.duk_get_prop(ctx, 0)
+        if cduk.duk_is_function(ctx, -1):
+            cduk.duk_push_string(ctx, b"bind")
+            cduk.duk_dup(ctx, 0)
+            cduk.duk_pcall_prop(ctx, -3, 1)
+
+    return 1
+
+
+cdef cduk.duk_ret_t js_date_proxy_set_wrapper(cduk.duk_context *ctx):
+    # [ args... ]
+
+    cdef cduk.duk_int_t nargs
+
+    nargs = cduk.duk_get_top(ctx)
+    cduk.duk_push_current_function(ctx)
+    cduk.duk_get_prop_string(ctx, -1, DUK_HIDDEN_SYMBOL(b"date_target"))
+    cduk.duk_get_prop_string(ctx, -2, DUK_HIDDEN_SYMBOL(b"date_prop"))
+    cduk.duk_insert(ctx, 0)
+    cduk.duk_insert(ctx, 0)
+    cduk.duk_pop(ctx)
+    cduk.duk_pcall_prop(ctx, 0, nargs)
+    cduk.duk_del_prop_string(ctx, 0, DUK_HIDDEN_SYMBOL(b'epoch_usec'))
+
+    return 1
 
 
 cdef to_js(Context pyctx, value):
