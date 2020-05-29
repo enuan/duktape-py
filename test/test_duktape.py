@@ -12,6 +12,8 @@ import pytz
 
 # todo: unicode tests everywhere and strings with nulls (i.e. I'm relying on null termination)
 
+TEST_DIR = os.path.abspath(os.path.dirname(__file__))
+
 
 def test_create():
     duktape.Context()
@@ -179,7 +181,7 @@ def test_module_loading():
 
 
 def test_node_module_loading():
-    ctx = duktape.Context(module_path=os.path.join(os.path.abspath(os.path.dirname(__file__)), 'node_modules'))
+    ctx = duktape.Context(module_path=os.path.join(TEST_DIR, 'node_modules'))
 
     ctx.eval('const a = require("a")')
     assert ctx['a']['foo'] == 'a'
@@ -192,6 +194,18 @@ def test_node_module_loading():
     ctx.eval('const c = require("c")')
     assert ctx['c']['foo'] == 'c'
     assert ctx['c']['fruit'] == 'Apple'
+
+
+def test_required_inside_load():
+    ctx = duktape.Context(module_path=os.path.join(TEST_DIR, 'node_modules'))
+
+    with tempfile.NamedTemporaryFile(suffix='.js', dir=TEST_DIR) as tf:
+        tf.write(b"const baz = require('./node_modules/b'); ");
+        tf.flush()
+        ctx.load(os.path.join(tf.name))
+
+    assert ctx['baz']['foo'] == 'b'
+    assert ctx['baz']['fruit'] == 'Apple'
 
 
 def test_js_func_invocation_after_context_gc():
