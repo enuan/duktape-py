@@ -579,7 +579,7 @@ cdef class Context:
     def __len__(self):
         return cduk.duk_get_top(self.ctx)
 
-    def load(self, filename):
+    def load(self, filename, strict=False):
         # Global code: compiles into a function with zero arguments, which
         # executes like a top level ECMAScript program
         #
@@ -603,7 +603,10 @@ cdef class Context:
         try:
             cduk.fileio_push_file_string(self.ctx, smart_str(filename)) # [ ... source ]
             cduk.duk_push_string(self.ctx, smart_str(filename)) # [ ... source filename ]
-            duk_reraise(self, cduk.duk_pcompile(self.ctx, 0)) # [ ... func ]
+            compile_flags = 0
+            if strict:
+                compile_flags |= cduk.DUK_COMPILE_STRICT
+            duk_reraise(self, cduk.duk_pcompile(self.ctx, compile_flags)) # [ ... func ]
             # bind 'this' to global object
             cduk.duk_push_global_object(self.ctx)  # [ ... func global ]
             duk_reraise(self, cduk.duk_pcall_method(self.ctx, 0)) # [ ... retval ]

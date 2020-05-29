@@ -208,6 +208,23 @@ def test_required_inside_load():
     assert ctx['baz']['fruit'] == 'Apple'
 
 
+def test_strict_load():
+    ctx = duktape.Context(module_path=os.path.join(TEST_DIR, 'node_modules'))
+
+    with tempfile.NamedTemporaryFile(suffix='.js', dir=TEST_DIR) as tf:
+        tf.write(b"""const foo = function(x) {
+            bar = x;
+        }""")
+        tf.flush()
+        ctx.load(os.path.join(tf.name), strict=True)
+
+    with pytest.raises(duktape.Error) as exc:
+        ctx.eval('foo(10)')
+
+    assert "ReferenceError" in str(exc.value)
+    assert "identifier 'bar' undefined" in str(exc.value)
+
+
 def test_js_func_invocation_after_context_gc():
     ctx = duktape.Context()
     ctx.eval("function foo(x) { return x*2; }")
