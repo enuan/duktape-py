@@ -715,8 +715,8 @@
         }
     ], 
     "duk_version": 20400, 
-    "git_branch": "master", 
-    "git_commit": "7452d6b6ed907121a6d35d27d3e2d2e8d6f5f815", 
+    "git_branch": "py3", 
+    "git_commit": "c317f8081bee6f688c700c9f62eb8415d860e0ac", 
     "builtin_strings_info": [
         {
             "plain": "Undefined", 
@@ -1717,7 +1717,7 @@
         "c3RhdGlj", 
         "eWllbGQ="
     ], 
-    "git_describe": "7452d6b-dirty", 
+    "git_describe": "c317f80-dirty", 
     "builtin_strings": [
         "Undefined", 
         "Null", 

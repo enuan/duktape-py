@@ -178,6 +178,22 @@ def test_module_loading():
     assert ctx['msg'] == 'Hello world!'
 
 
+def test_node_module_loading():
+    ctx = duktape.Context(module_path=os.path.join(os.path.abspath(os.path.dirname(__file__)), 'node_modules'))
+
+    ctx.eval('const a = require("a")')
+    assert ctx['a']['foo'] == 'a'
+    assert ctx['a']['fruit'] == 'Apple'
+
+    ctx.eval('const b = require("b")')
+    assert ctx['b']['foo'] == 'b'
+    assert ctx['b']['fruit'] == 'Apple'
+
+    ctx.eval('const c = require("c")')
+    assert ctx['c']['foo'] == 'c'
+    assert ctx['c']['fruit'] == 'Apple'
+
+
 def test_js_func_invocation_after_context_gc():
     ctx = duktape.Context()
     ctx.eval("function foo(x) { return x*2; }")

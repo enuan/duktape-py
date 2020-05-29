@@ -133,9 +133,10 @@ cdef extern from "duktape_c/duktape.h":
     duk_ret_t duk_pnew(duk_context *ctx, duk_idx_t nargs)
     duk_int_t duk_pcall_prop(duk_context *ctx, duk_idx_t obj_idx, duk_idx_t nargs)
     duk_idx_t duk_push_proxy(duk_context *ctx, duk_uint_t proxy_flags)
+    void duk_concat(duk_context *ctx, duk_idx_t count)
 
 cdef extern from "fileio.c":
     void fileio_push_file_string(duk_context *ctx, const char *filename)
 
-cdef extern from 'duktape_c/duk_module_duktape.c':
-    cdef void duk_module_duktape_init(duk_context *ctx)
+cdef extern from 'duktape_c/duk_module_node.c':
+    cdef void duk_module_node_init(duk_context *ctx)

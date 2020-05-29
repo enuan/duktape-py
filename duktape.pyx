@@ -4,6 +4,7 @@ cimport cduk
 cimport cpython
 
 import datetime
+import json
 import os
 import threading
 import sys
@@ -91,16 +92,97 @@ cdef duk_reraise(cduk.duk_context *ctx, cduk.duk_int_t rc):
             raise Error(force_unicode(cduk.duk_safe_to_string(ctx, -1)))
 
 
-cdef cduk.duk_ret_t duk_mod_search(cduk.duk_context *ctx):
-    cduk.duk_push_current_function(ctx)
-    cduk.duk_get_prop_string(ctx, -1, b'__duktape_module_path__')
-    mod_path = force_unicode(cduk.duk_require_string(ctx, -1))
-    cduk.duk_pop_n(ctx, 2)
+cdef cduk.duk_ret_t duk_resolve_module(cduk.duk_context *ctx):
+    #
+    # [0]: module_id
+    # [1]: parent_id
+    #
+    module_id = force_unicode(cduk.duk_require_string(ctx, 0))
+    parent_id = force_unicode(cduk.duk_require_string(ctx, 1))
 
-    mod_file = os.path.join(mod_path, force_unicode(cduk.duk_require_string(ctx, -1)))
-    if not mod_file.endswith('.js'):
-        mod_file += '.js'
-    cduk.fileio_push_file_string(ctx, smart_str(mod_file))
+    # node.js reference:
+    #
+    # https://nodejs.org/api/esm.html
+    # https://nodejs.org/api/modules.html#modules_all_together
+    #
+    if module_id.startswith('./') or module_id.startswith('../'):
+        if not parent_id:
+            cduk.duk_push_global_stash(ctx)
+            # if parent_id is not set BUT we are loading a file using
+            # Context.load we set it as parent_id, this allows correctly
+            # resolving any relative import for that file
+            if cduk.duk_get_prop_string(ctx, -1, b'__duktape_loading_file__'):
+                parent_id = force_unicode(cduk.duk_require_string(ctx, -1))
+            cduk.duk_pop_n(ctx, 2)
+        module_id_path = os.path.join(os.path.dirname(parent_id), module_id)
+        module_file = load_as_file(module_id_path) or load_as_dir(module_id_path)
+    else:
+        cduk.duk_push_current_function(ctx)
+        cduk.duk_get_prop_string(ctx, -1, b'module_paths')
+        for i in range(cduk.duk_get_length(ctx, -1)):
+            cduk.duk_get_prop_index(ctx, -1, i)
+            module_path = force_unicode(cduk.duk_require_string(ctx, -1))
+            cduk.duk_pop(ctx)
+            module_id_path = os.path.join(module_path, module_id)
+            module_file = load_as_file(module_id_path) or load_as_dir(module_id_path)
+            if module_file:
+                break
+        else:
+            module_file = None
+        cduk.duk_pop_n(ctx, 2)
+
+    if module_file and os.path.isfile(module_file):
+        cduk.duk_push_string(ctx, smart_str(os.path.normpath(module_file)))
+    else:
+        cduk.duk_generic_error(ctx, smart_str("Cannot find module '%s'" % module_id))
+
+    return 1
+
+
+cdef load_as_file(x):
+    for item in [x,
+                 x + '.js',
+                 x + '.json']:
+        if os.path.isfile(item):
+            return item
+
+
+cdef load_index(x):
+    for item in [os.path.join(x, 'index.js'),
+                 os.path.join(x, 'index.json')]:
+        if os.path.isfile(item):
+            return item
+
+
+cdef load_as_dir(x):
+    pkg_json_path = os.path.join(x, 'package.json')
+    if os.path.isfile(pkg_json_path):
+        with open(pkg_json_path) as pkg_json_file:
+            pkg_json = json.load(pkg_json_file)
+            pkg_main = pkg_json.get('main')
+            if pkg_main:
+                m = os.path.join(x, pkg_main)
+                return load_as_file(m) or load_index(m)
+    return load_index(x)
+
+
+cdef cduk.duk_ret_t duk_load_module(cduk.duk_context *ctx):
+    #
+    # [0]: resolved_id
+    # [1]: exports
+    # [2]: module
+    #
+    resolved_id = force_unicode(cduk.duk_require_string(ctx, 0))
+    if resolved_id.endswith('.json'):
+        # treat a JSON file as an object
+        cduk.duk_push_string(ctx, b"module.exports = ")
+        cduk.fileio_push_file_string(ctx, smart_str(resolved_id))
+        cduk.duk_concat(ctx, 2)
+    else:
+        # automatically force strict mode for loaded modules
+        cduk.duk_push_string(ctx, b"'use strict';")
+        cduk.fileio_push_file_string(ctx, smart_str(resolved_id))
+        cduk.duk_concat(ctx, 2)
     return 1
 
 
@@ -470,13 +552,18 @@ cdef class Context:
         cduk.duk_pop(self.ctx)
 
         if self.module_path:
-            cduk.duk_module_duktape_init(self.ctx)
-            cduk.duk_get_global_string(self.ctx, b'Duktape')
-            cduk.duk_push_c_function(self.ctx, duk_mod_search, 1)
-            cduk.duk_push_string(self.ctx, smart_str(self.module_path))
-            cduk.duk_put_prop_string(self.ctx, -2, b"__duktape_module_path__")
-            cduk.duk_put_prop_string(self.ctx, -2, b'modSearch')
-            cduk.duk_pop(self.ctx)
+            cduk.duk_push_object(self.ctx);
+            cduk.duk_push_c_function(self.ctx, duk_resolve_module, cduk.DUK_VARARGS);
+            if isinstance(self.module_path, list):
+                module_paths = self.module_path
+            else:
+                module_paths = [self.module_path]
+            to_js_array(self, module_paths)
+            cduk.duk_put_prop_string(self.ctx, -2, b"module_paths")
+            cduk.duk_put_prop_string(self.ctx, -2, b"resolve");
+            cduk.duk_push_c_function(self.ctx, duk_load_module, cduk.DUK_VARARGS);
+            cduk.duk_put_prop_string(self.ctx, -2, b"load");
+            cduk.duk_module_node_init(self.ctx)
 
     def __bool__(self):
         return True
@@ -508,13 +595,24 @@ cdef class Context:
         # duk_pcompile() and duk_pcall() instead of duk_peval() (which is a
         # convenience call for eval code).
         # Current duk_(p)eval() won't supply a this binding.
-        cduk.fileio_push_file_string(self.ctx, smart_str(filename)) # [ ... source ]
-        cduk.duk_push_string(self.ctx, smart_str(filename)) # [ ... source filename ]
-        duk_reraise(self.ctx, cduk.duk_pcompile(self.ctx, 0)) # [ ... func ]
-        # bind 'this' to global object
-        cduk.duk_push_global_object(self.ctx)  # [ ... func global ]
-        duk_reraise(self.ctx, cduk.duk_pcall_method(self.ctx, 0)) # [ ... retval ]
+        cduk.duk_push_global_stash(self.ctx)
+        cduk.duk_push_string(self.ctx, smart_str(filename))
+        # used by duk_resolve_module
+        cduk.duk_put_prop_string(self.ctx, -2, b"__duktape_loading_file__")
         cduk.duk_pop(self.ctx)
+        try:
+            cduk.fileio_push_file_string(self.ctx, smart_str(filename)) # [ ... source ]
+            cduk.duk_push_string(self.ctx, smart_str(filename)) # [ ... source filename ]
+            duk_reraise(self, cduk.duk_pcompile(self.ctx, 0)) # [ ... func ]
+            # bind 'this' to global object
+            cduk.duk_push_global_object(self.ctx)  # [ ... func global ]
+            duk_reraise(self, cduk.duk_pcall_method(self.ctx, 0)) # [ ... retval ]
+            cduk.duk_pop(self.ctx)
+        finally:
+            cduk.duk_push_global_stash(self.ctx)
+            cduk.duk_del_prop_string(self.ctx, -1, b"__duktape_loading_file__")
+            cduk.duk_pop(self.ctx)
+
 
     def eval(self, js):
         # Eval code: compiles into a function with zero arguments, which
