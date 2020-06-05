@@ -209,21 +209,23 @@ def test_required_inside_load():
 
 
 def test_strict_load():
-    ctx = duktape.Context(module_path=os.path.join(TEST_DIR, 'node_modules'))
+    ctx = duktape.Context()
 
     with tempfile.NamedTemporaryFile(suffix='.js', dir=TEST_DIR) as tf:
         tf.write(b"""const foo = function(x) {
             bar = x;
         }""")
         tf.flush()
+
         ctx.load(os.path.join(tf.name), strict=True)
+        with pytest.raises(duktape.Error) as error:
+            ctx.eval('foo(10)')
+        assert "ReferenceError" in str(error.value)
+        assert "identifier 'bar' undefined" in str(error.value)
 
-    with pytest.raises(duktape.Error) as exc:
+        ctx.load(os.path.join(tf.name), strict=False)
         ctx.eval('foo(10)')
-
-    assert "ReferenceError" in str(exc.value)
-    assert "identifier 'bar' undefined" in str(exc.value)
-
+        assert ctx['bar'] == 10
 
 def test_js_func_invocation_after_context_gc():
     ctx = duktape.Context()
