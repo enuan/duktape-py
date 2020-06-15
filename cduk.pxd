@@ -123,6 +123,7 @@ cdef extern from "duktape_c/duktape.h":
     const char *duk_safe_to_string(duk_context *ctx, duk_idx_t idx)
     void duk_set_finalizer(duk_context *ctx, duk_idx_t idx)
     const char *duk_to_string(duk_context *ctx, duk_idx_t idx)
+    duk_ret_t duk_generic_error(duk_context *ctx, const char *fmt, ...)
     duk_idx_t duk_push_thread(duk_context *ctx)
     duk_idx_t duk_push_thread_new_globalenv(duk_context *ctx)
     void duk_push_thread_stash(duk_context *ctx, duk_context *target_ctx)
@@ -134,6 +135,7 @@ cdef extern from "duktape_c/duktape.h":
     duk_int_t duk_pcall_prop(duk_context *ctx, duk_idx_t obj_idx, duk_idx_t nargs)
     duk_idx_t duk_push_proxy(duk_context *ctx, duk_uint_t proxy_flags)
     void duk_concat(duk_context *ctx, duk_idx_t count)
+    void duk_remove(duk_context *ctx, duk_idx_t idx)
 
 cdef extern from "fileio.c":
     void fileio_push_file_string(duk_context *ctx, const char *filename)
