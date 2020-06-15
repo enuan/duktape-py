@@ -359,3 +359,124 @@ def test_push_datetime():
     ctx['dt_ny'] = ny_dt
     # date to js are ALWAYS in the UTC time zone
     ctx.eval('dt_ny.toISOString()') == '2019-11-19T15:30:15.123Z'
+    # date to py are naive datetime ALWAYS in the UTC time zone
+    assert ctx['dt_ny'] == ny_dt.astimezone(pytz.utc).replace(tzinfo=None)
+
+
+def test_obj_proxy():
+    ctx = duktape.Context()
+    ctx.eval('var foo = {a: 1, b: 2, c:3};')
+
+    foo = ctx.proxy('foo')
+    foo['d'] = 4
+    assert ctx.eval('foo.d == 4')
+    assert foo['d'] == 4
+    assert foo.d == 4
+    ctx.eval('foo.e = 5')
+    assert foo['e'] == 5
+    assert foo.e == 5
+
+
+def test_obj_proxy_as_dict():
+    ctx = duktape.Context()
+    ctx.eval('var foo = {a: 1, b: 2, c:3};')
+
+    foo = ctx.proxy('foo')._asdict()
+    assert foo == {'a': 1, 'b': 2, 'c': 3}
+    foo['d'] = 4
+    assert ctx.eval('foo.d == 4')
+    assert foo['d'] == 4
+    ctx.eval('foo.e = 5')
+    assert foo['e'] == 5
+    assert foo == {'a': 1, 'b': 2, 'c': 3, 'd': 4, 'e': 5}
+
+
+def test_array_proxy():
+    ctx = duktape.Context()
+    ctx.eval('var foo = [1,2,3];')
+
+    foo = ctx.proxy('foo')
+    assert len(foo) == 3
+    foo.append(4)
+    assert len(foo) == 4
+    assert foo[3] == 4
+    ctx.eval('foo.push(5)')
+    assert len(foo) == 5
+    assert foo[4] == 5
+
+    assert list(foo) == [1, 2, 3, 4, 5]
+    assert foo[:] == [1, 2, 3, 4, 5]
+    assert foo[3:] == [4, 5]
+    assert foo[::2] == [1, 3, 5]
+
+    foo.insert(1, 10)
+    assert foo[1] == 10
+
+    del foo[0]
+    assert len(foo) == 5
+
+    with pytest.raises(IndexError):
+        foo[6]
+
+    assert foo[-1] == 5
+    assert foo[-4] == 2
+
+
+def test_proxy_recursive():
+    ctx = duktape.Context()
+    ctx.eval('''var foo = {
+        a: [1,2,3],
+        b: {
+            a: {
+                a: [1,2,3],
+                b: {a: 1, b: 2}
+            },
+            b: [
+                {a: 1, b: 2}
+            ]
+        }
+    };''')
+
+    foo = ctx.proxy('foo')
+    assert len(foo.a) == 3
+    foo.a.append(4)
+    assert len(foo.a) == 4
+    assert ctx.eval('foo.a[foo.a.length - 1] == 4')
+    ctx.eval('foo.a.push(5)')
+    assert list(foo.a) == [1,2,3,4,5]
+
+    assert list(foo.b.a.a) == [1,2,3]
+    foo.b.a.a.append(4)
+    assert list(foo.b.a.a) == [1,2,3,4]
+    ctx.eval('foo.b.a.a.push(5)')
+    assert list(foo.b.a.a) == [1,2,3,4,5]
+
+    assert foo.b.a.b.a == 1
+    assert foo.b.a.b.b == 2
+    foo.b.a.b.c = 3
+    assert ctx.eval('foo.b.a.b.c == 3')
+    ctx.eval('foo.b.a.b.d = 4')
+    assert foo.b.a.b.d == 4
+
+    assert len(foo.b.b) == 1
+    assert foo.b.b[0]._asdict() == {'a': 1, 'b': 2}
+    foo.b.b[0].c = 3
+    assert ctx.eval('foo.b.b[0].c == 3')
+    ctx.eval('foo.b.b[0].d = 4')
+    assert foo.b.b[0].d == 4
+
+
+def test_proxy_non_pojo():
+    ctx = duktape.Context()
+    ctx.eval("""var Foo = function(x, y) {
+        this.x = x;
+        this.y = y;
+    }""")
+    ctx.eval('var foo = new Foo(1, 2)')
+
+    foo = ctx.proxy('foo')
+    assert foo.x == 1
+    assert foo.y == 2
+    foo.x, foo.y = 10, 20
+    assert ctx.eval('foo.x == 10')
+    assert ctx.eval('foo.y == 20')

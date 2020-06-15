@@ -3,6 +3,7 @@
 cimport cduk
 cimport cpython
 
+import collections.abc
 import datetime
 import json
 import os
@@ -81,15 +82,15 @@ cdef duk_context_dump(cduk.duk_context *ctx):
     return '(%s) %s' % (addr, dump)
 
 
-cdef duk_reraise(cduk.duk_context *ctx, cduk.duk_int_t rc):
+cdef duk_reraise(Context pyctx, cduk.duk_int_t rc):
     if rc:
-        if cduk.duk_is_error(ctx, -1):
-            cduk.duk_get_prop_string(ctx, -1, b"stack")
-            stacktrace = cduk.duk_safe_to_stacktrace(ctx, -1)
-            cduk.duk_pop(ctx)
-            raise Error(force_unicode(stacktrace))
+        if cduk.duk_is_error(pyctx.ctx, -1):
+            cduk.duk_get_prop_string(pyctx.ctx, -1, b"stack")
+            stacktrace = force_unicode(cduk.duk_safe_to_stacktrace(pyctx.ctx, -1))
+            cduk.duk_pop(pyctx.ctx)
+            raise Error(stacktrace)
         else:
-            raise Error(force_unicode(cduk.duk_safe_to_string(ctx, -1)))
+            raise Error(force_unicode(cduk.duk_safe_to_string(pyctx.ctx, -1)))
 
 
 cdef cduk.duk_ret_t duk_resolve_module(cduk.duk_context *ctx):
@@ -225,48 +226,267 @@ cdef to_python_dict(Context pyctx, cduk.duk_idx_t idx):
     return ret
 
 
-cdef to_python_func(Context pyctx, cduk.duk_idx_t idx):
+cdef to_python_proxy(Context pyctx, cduk.duk_idx_t idx, pojo_only=True):
     global _ref_map_next_id
 
     cdef cduk.duk_context *ctx = pyctx.ctx
     cdef cduk.duk_int_t _ref_id = _ref_map_next_id
     _ref_map_next_id += 1
 
-    fidx = cduk.duk_normalize_index(ctx, idx)
+    norm_idx = cduk.duk_normalize_index(ctx, idx)
 
     cduk.duk_push_global_stash(ctx)  # [ ... stash ]
     cduk.duk_get_prop_string(ctx, -1, b"_ref_map")  # [ ... stash _ref_map ]
     cduk.duk_push_int(ctx, _ref_id)  # [ ... stash _ref_map id ]
-    cduk.duk_dup(ctx, fidx)  # [ ... stash _ref_map id func ]
+    cduk.duk_dup(ctx, norm_idx)  # [ ... stash _ref_map id func ]
     cduk.duk_put_prop(ctx, -3)  # [ ... stash _ref_map ]
     cduk.duk_pop_n(ctx, 2)
 
-    f = Func(pyctx)
-    f._ref_id = _ref_id
-    return f
+    if cduk.duk_is_function(ctx, idx):
+        return JsFunc(pyctx, _ref_id)
+    elif cduk.duk_is_array(ctx, idx):
+        return JsArray(pyctx, _ref_id)
+    elif duk_is_plain_object(pyctx, idx) or \
+            (not pojo_only and cduk.duk_is_object(pyctx.ctx, idx)):
+        return JsObject(pyctx, _ref_id)
+
+    raise TypeError("not proxable")
 
 
-cdef class Func:
+cdef duk_is_plain_object(Context pyctx, cduk.duk_idx_t idx):
+    # https://masteringjs.io/tutorials/fundamentals/pojo
+    if not cduk.duk_is_object(pyctx.ctx, idx):
+        return False
+
+    cduk.duk_get_prototype(pyctx.ctx, idx)
+    if cduk.duk_is_undefined(pyctx.ctx, -1):
+        # check if the object has no prototype
+        # (its a "bare object" Object.create(null))
+        cduk.duk_pop(pyctx.ctx)
+        return True
+
+    assert duk_get_global_dotted_string(pyctx, b'Object.prototype')
+    eq = cduk.duk_strict_equals(pyctx.ctx, -1, -2)
+    cduk.duk_pop_n(pyctx.ctx, 2)
+    return bool(eq)
+
+
+def push_and_pop_proxy(f):
+    def wrapper(JsProxy self, *args, **kwargs):
+        try:
+            self.push_proxy_ref()
+            return f(self, *args, **kwargs)
+        finally:
+            self.pop_proxy_ref()
+    return wrapper
+
+
+cdef class JsProxy:
 
     cdef Context pyctx
     cdef cduk.duk_int_t _ref_id
 
-    def __init__(self, Context pyctx):
+    def __init__(self, Context pyctx, ref_id):
         self.pyctx = pyctx
+        self._ref_id = ref_id
+
+    cdef push_proxy_ref(self):
+        cduk.duk_push_global_stash(self.pyctx.ctx)  # -> [ ... stash ]
+        cduk.duk_get_prop_string(self.pyctx.ctx, -1, b"_ref_map")  # -> [ ... stash _ref_map ]
+        cduk.duk_push_int(self.pyctx.ctx, self._ref_id)  # -> [ ... stash _ref_map _ref_id ]
+        cduk.duk_get_prop(self.pyctx.ctx, -2)  # -> [ ... stash _ref_map obj ]
+        cduk.duk_remove(self.pyctx.ctx, -2) # -> [ ... stash obj ]
+        cduk.duk_remove(self.pyctx.ctx, -2) # -> [ ... obj ]
+
+    cdef pop_proxy_ref(self):
+        cduk.duk_pop(self.pyctx.ctx)
+
+    @push_and_pop_proxy
+    def to_python(self):
+        return cduk.duk_json_encode(self.pyctx.ctx, -1).decode()
+
+
+class JsObject(object):
+
+    def __init__(self, pyctx, ref_id):
+        self.__dict__['_proxy'] = ObjectProxy(pyctx, ref_id)
+
+    def __str__(self):
+        return 'JsObject(%s)' % self._proxy.to_python()
+    __repr__ = __str__
+
+    def __dir__(self):
+        return list(self._proxy.keys())
+
+    def __getattr__(self, k):
+        return self._proxy.getitem(k)
+    __getitem__ = __getattr__
+
+    def __setattr__(self, k, v):
+        self._proxy.setitem(k, v)
+    __setitem__ = __setattr__
+
+    def __delattr__(self, k):
+        self._proxy.delitem(k)
+    __delitem__ = __delattr__
+
+    def _asdict(self):
+        return JsDict(self._proxy)
+
+
+class JsDict(collections.abc.MutableMapping):
+
+    def __init__(self, proxy):
+        self._proxy = proxy
+
+    def __str__(self):
+        return 'JsDict(%s)' % self._proxy.to_python()
+    __repr__ = __str__
+
+    def __getitem__(self, k):
+        return self._proxy.getitem(k)
+
+    def __setitem__(self, k, v):
+        self._proxy.setitem(k, v)
+
+    def __delitem__(self, k):
+        self._proxy.delitem(k)
+
+    def __iter__(self):
+        return self._proxy.keys()
+
+    def __len__(self):
+        return self._proxy.length()
+
+
+cdef class ObjectProxy(JsProxy):
+
+    @push_and_pop_proxy
+    def getitem(self, key):
+        cduk.duk_get_prop_string(self.pyctx.ctx, -1, smart_str(key))
+        try:
+            return to_python_proxy(self.pyctx, -1)
+        except TypeError:
+            return to_python(self.pyctx, -1)
+        finally:
+            cduk.duk_pop(self.pyctx.ctx)
+
+    @push_and_pop_proxy
+    def setitem(self, key, value):
+        to_js(self.pyctx, value)
+        cduk.duk_put_prop_string(self.pyctx.ctx, -2, smart_str(key))
+
+    @push_and_pop_proxy
+    def delitem(self, key):
+        cduk.duk_del_prop_string(self.pyctx.ctx, -1, smart_str(key))
+
+    def keys(self):
+        self.push_proxy_ref()
+        cduk.duk_enum(self.pyctx.ctx, -1, cduk.DUK_ENUM_OWN_PROPERTIES_ONLY)
+        while cduk.duk_next(self.pyctx.ctx, -1, 0):
+            yield to_python(self.pyctx, -1)
+            cduk.duk_pop(self.pyctx.ctx)
+        cduk.duk_pop(self.pyctx.ctx)
+        self.pop_proxy_ref()
+
+    def length(self):
+        return sum(1 for x in self.keys())
+
+
+class JsArray(collections.abc.MutableSequence):
+
+    def __init__(self, pyctx, ref_id):
+        self._proxy = ArrayProxy(pyctx, ref_id)
+
+    def __str__(self):
+        return 'JsArray(%s)' % self._proxy.to_python()
+    __repr__ = __str__
+
+    def __getitem__(self, i):
+        return self._proxy.get(i)
+
+    def __setitem__(self, i, v):
+        self._proxy.put(i, v)
+
+    def __delitem__(self, i):
+        self._proxy.delete(i)
+
+    def __len__(self):
+        return self._proxy.length()
+
+    def insert(self, i, v):
+        self._proxy.insert(i, v)
+
+
+cdef class ArrayProxy(JsProxy):
+
+    @push_and_pop_proxy
+    def get(self, index):
+        if isinstance(index, slice):
+            length = self.length()
+            return [self.get(i) for i in
+                    xrange(index.start if index.start else 0,
+                           min(index.stop if index.stop else length, length),
+                           index.step if index.step else 1)]
+        try:
+            if index < 0:
+                index = self.length() + index
+            if cduk.duk_get_prop_index(self.pyctx.ctx, -1, index):
+                try:
+                    return to_python_proxy(self.pyctx, -1)
+                except TypeError, e:
+                    return to_python(self.pyctx, -1)
+            else:
+                raise IndexError('index out of range')
+        finally:
+            cduk.duk_pop(self.pyctx.ctx)
+
+    @push_and_pop_proxy
+    def put(self, index, item):
+        if index >= self.length():
+            raise IndexError('index out of range')
+        to_js(self.pyctx, item)
+        if not cduk.duk_put_prop_index(self.pyctx.ctx, -2, index):
+            raise IndexError('index out of range')
+
+    @push_and_pop_proxy
+    def delete(self, index):
+        if index >= self.length():
+            raise IndexError('index out of range')
+        cduk.duk_push_string(self.pyctx.ctx, "splice")
+        cduk.duk_push_number(self.pyctx.ctx, index)
+        cduk.duk_push_number(self.pyctx.ctx, 1)
+        cduk.duk_pcall_prop(self.pyctx.ctx, -4, 2)
+        cduk.duk_pop(self.pyctx.ctx)
+
+    @push_and_pop_proxy
+    def length(self):
+        cduk.duk_get_prop_string(self.pyctx.ctx, -1, "length")
+        ret = to_python(self.pyctx, -1)
+        cduk.duk_pop(self.pyctx.ctx)
+        return ret
+
+    @push_and_pop_proxy
+    def insert(self, index, item):
+        cduk.duk_push_string(self.pyctx.ctx, "splice")
+        cduk.duk_push_number(self.pyctx.ctx, index)
+        cduk.duk_push_number(self.pyctx.ctx, 0)
+        to_js(self.pyctx, item)
+        cduk.duk_pcall_prop(self.pyctx.ctx, -5, 3)
+        cduk.duk_pop(self.pyctx.ctx)
+
+
+cdef class JsFunc(JsProxy):
 
     def __call__(self, *args):
-        cdef cduk.duk_context *ctx = self.pyctx.ctx
-
-        cduk.duk_push_global_stash(ctx)  # -> [ ... stash ]
-        cduk.duk_get_prop_string(ctx, -1, b"_ref_map")  # -> [ ... stash _ref_map ]
-        cduk.duk_push_int(ctx, self._ref_id)  # -> [ ... stash _ref_map _ref_id ]
-        cduk.duk_get_prop(ctx, -2)  # -> [ ... stash _ref_map func ]
+        self.push_proxy_ref()
         for arg in args:
             to_js(self.pyctx, arg)
-        duk_reraise(ctx, cduk.duk_pcall(ctx, len(args)))  # -> [ ... stash _ref_map retval ]
-        ret = to_python(self.pyctx, -1)
-        cduk.duk_pop_n(ctx, 3)
-        return ret
+        duk_reraise(self.pyctx, cduk.duk_pcall(self.pyctx.ctx, len(args)))
+        try:
+            return to_python(self.pyctx, -1)
+        finally:
+            self.pop_proxy_ref()
 
 
 cdef to_python(Context pyctx, cduk.duk_idx_t idx):
@@ -285,7 +505,7 @@ cdef to_python(Context pyctx, cduk.duk_idx_t idx):
     elif cduk.duk_is_array(ctx, idx):
         return to_python_list(pyctx, idx)
     elif cduk.duk_is_function(ctx, idx):
-        return to_python_func(pyctx, idx)
+        return to_python_proxy(pyctx, idx)
     elif cduk.duk_is_object(ctx, idx):
         def instanceof(name):
             if not duk_get_global_dotted_string(pyctx, smart_str(name)):
@@ -639,6 +859,16 @@ cdef class Context:
 
     def new_thread(self, new_globalenv):
         return ThreadContext(self, new_globalenv)
+
+    def proxy(self, key):
+        if not duk_get_global_dotted_string(self, smart_str(key)):
+            # XXX raise Error?
+            return
+        try:
+            return to_python_proxy(self, -1, pojo_only=False)
+        finally:
+            cduk.duk_pop(self.ctx)
+
 
 
 cdef class ThreadContext(Context):

@@ -136,6 +136,9 @@ cdef extern from "duktape_c/duktape.h":
     duk_idx_t duk_push_proxy(duk_context *ctx, duk_uint_t proxy_flags)
     void duk_concat(duk_context *ctx, duk_idx_t count)
     void duk_remove(duk_context *ctx, duk_idx_t idx)
+    const char *duk_json_encode(duk_context *ctx, duk_idx_t idx)
+    void duk_get_prototype(duk_context *ctx, duk_idx_t idx)
+    duk_bool_t duk_strict_equals(duk_context *ctx, duk_idx_t idx1, duk_idx_t idx2)
 
 cdef extern from "fileio.c":
     void fileio_push_file_string(duk_context *ctx, const char *filename)
