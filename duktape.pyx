@@ -840,7 +840,7 @@ cdef class Context:
     def eval(self, js):
         # Eval code: compiles into a function with zero arguments, which
         # executes like an ECMAScript eval call
-        duk_reraise(self.ctx, cduk.duk_peval_string(self.ctx, smart_str(js)))
+        duk_reraise(self, cduk.duk_peval_string(self.ctx, smart_str(js)))
         return to_python(self, -1)
 
     loads = eval
