@@ -717,7 +717,7 @@ cdef to_js(Context pyctx, value):
     elif isinstance(value, (datetime.datetime,
                             datetime.date,
                             datetime.time)):
-        to_js_datetime(pyctx, value)
+        to_js_date(pyctx, value)
     elif callable(value):
         to_js_func(pyctx, PyFunc(value))
     elif isinstance(value, PyFunc):
