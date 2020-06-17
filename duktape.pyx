@@ -84,13 +84,9 @@ cdef duk_context_dump(cduk.duk_context *ctx):
 
 cdef duk_reraise(Context pyctx, cduk.duk_int_t rc):
     if rc:
-        if cduk.duk_is_error(pyctx.ctx, -1):
-            cduk.duk_get_prop_string(pyctx.ctx, -1, b"stack")
-            stacktrace = force_unicode(cduk.duk_safe_to_stacktrace(pyctx.ctx, -1))
-            cduk.duk_pop(pyctx.ctx)
-            raise Error(stacktrace)
-        else:
-            raise Error(force_unicode(cduk.duk_safe_to_string(pyctx.ctx, -1)))
+        stacktrace = force_unicode(cduk.duk_safe_to_stacktrace(pyctx.ctx, -1))
+        cduk.duk_pop(pyctx.ctx)
+        raise Error(stacktrace)
 
 
 cdef cduk.duk_ret_t duk_resolve_module(cduk.duk_context *ctx):
