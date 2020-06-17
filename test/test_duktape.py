@@ -480,3 +480,150 @@ def test_proxy_non_pojo():
     foo.x, foo.y = 10, 20
     assert ctx.eval('foo.x == 10')
     assert ctx.eval('foo.y == 20')
+
+
+class Foo(object):
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+
+
+class Bar(object):
+    def __init__(self, value):
+        self.value = value
+
+
+class FooBar(object): pass
+
+
+def init_ctx_with_hooks():
+
+    def to_js(obj, new):
+        if isinstance(obj, Foo):
+            return new('ns.Foo', obj.x, obj.y)
+        elif isinstance(obj, Bar):
+            return new('ns.Bar', obj.value)
+        elif isinstance(obj, FooBar):
+            return new('ns.FooBar')
+
+    def to_py(obj, instanceof):
+        if instanceof('ns.FooBar'):
+            raise ValueError('should never pass')
+        elif instanceof('ns.Foo'):
+            return Foo(**obj)
+        elif instanceof('ns.Bar'):
+            return Bar(**obj)
+
+    ctx = duktape.Context(to_js_hook=to_js,
+                          to_py_hook=to_py)
+    ctx.eval("""var ns = {};
+    ns.Foo = function(x, y) {
+        this.x = x;
+        this.y = y;
+    }
+    ns.Bar = function(value) {
+        this.value = value;
+    }""")
+
+    return ctx
+
+
+def test_custom_hooks():
+    ctx = init_ctx_with_hooks()
+
+    ctx['foo'] = Foo(Bar(10), Bar(20))
+
+    assert ctx.eval('foo instanceof ns.Foo')
+    assert ctx.eval('foo.x instanceof ns.Bar')
+    assert ctx.eval('foo.y instanceof ns.Bar')
+    assert ctx.eval('foo.x.value == 10')
+    assert ctx.eval('foo.y.value == 20')
+
+    foo = ctx['foo']
+    assert isinstance(foo, Foo)
+    assert isinstance(foo.x, Bar)
+    assert isinstance(foo.y, Bar)
+    assert foo.x.value == 10
+    assert foo.y.value == 20
+
+    with pytest.raises(ValueError) as error:
+        ctx['foobar'] = FooBar()
+    assert "'ns.FooBar' is undefined" in str(error.value)
+
+
+def test_custom_hooks_with_proxy():
+    # NOTE proxy are not applied to nested objects
+    # if they are not POJO(s) (Plain Old Javascript Object(s))
+    # ONLY the "first level" object is a proxy (even if it's not a POJO)
+
+    ctx = init_ctx_with_hooks()
+
+    ctx['foo'] = Foo(Bar(10), Bar(20))
+
+    foo = ctx.proxy('foo')
+    assert isinstance(foo.x, Bar)
+    assert isinstance(foo.y, Bar)
+    assert foo.x.value == 10
+    assert foo.y.value == 20
+
+    assert not isinstance(foo, Foo)
+    assert isinstance(foo, duktape.JsObject)
+    foo.x.value = 100
+    assert ctx.eval('foo.x.value == 10')
+
+    ctx.eval('bar = [new ns.Foo(1, 2)]')
+    bar = ctx.proxy('bar')
+    assert len(bar) == 1
+    assert isinstance(bar[0], Foo)
+    assert bar[0].x == 1
+    assert bar[0].y == 2
+    bar[0].x = 10
+    assert ctx.eval('bar[0].x == 1')
+    f = Foo(3, 4)
+    bar.append(f)
+    assert len(bar) == 2
+    assert ctx.eval('bar.length == 2')
+    assert ctx.eval('bar[1] instanceof ns.Foo')
+    assert ctx.eval('bar[1].x == 3')
+    assert ctx.eval('bar[1].y == 4')
+    assert ctx.eval('bar[1].x = 30')
+    assert f.x == 3
+
+
+def test_custom_hooks_for_exceptions():
+
+    class FooError(Exception):
+        def __init__(self, x):
+            self.x = x
+
+    def to_js(obj, new):
+        if isinstance(obj, FooError):
+            return new('FooError', obj.x)
+
+    def to_py(obj, instanceof):
+        if instanceof('FooError'):
+            return FooError(obj['x'])
+        return obj
+
+    ctx = duktape.Context(to_js_hook=to_js,
+                          to_py_hook=to_py)
+    ctx.eval("""var FooError = function(x) {
+        this.x = x;
+    }""")
+
+    with pytest.raises(FooError) as error:
+        ctx.eval("throw (new FooError('foo'))")
+    assert error.value.x == 'foo'
+
+    def raise_foo_error(x):
+        raise FooError(x)
+    ctx['raise'] = raise_foo_error
+
+    ctx.eval("""try {
+        raise('bar');
+    } catch (e) {
+        if (e instanceof FooError) {
+            foo_err = e.x;
+        }
+    }""")
+    assert ctx['foo_err'] == 'bar'

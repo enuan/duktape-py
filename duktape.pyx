@@ -66,7 +66,7 @@ cdef duk_get_global_dotted_string(Context pyctx, key):
         return False
     for part in parts[1:]:
         if not cduk.duk_get_prop_string(pyctx.ctx, -1, part):
-            cduk.duk_pop(pyctx.ctx)
+            cduk.duk_pop_n(pyctx.ctx, 2)
             return False
         cduk.duk_remove(pyctx.ctx, -2)
     return True
@@ -84,9 +84,12 @@ cdef duk_context_dump(cduk.duk_context *ctx):
 
 cdef duk_reraise(Context pyctx, cduk.duk_int_t rc):
     if rc:
+        exc = to_python(pyctx, -1)
         stacktrace = force_unicode(cduk.duk_safe_to_stacktrace(pyctx.ctx, -1))
         cduk.duk_pop(pyctx.ctx)
-        raise Error(stacktrace)
+        if not isinstance(exc, Exception):
+            exc = Error(stacktrace)
+        raise exc
 
 
 cdef cduk.duk_ret_t duk_resolve_module(cduk.duk_context *ctx):
@@ -524,11 +527,15 @@ cdef to_python(Context pyctx, cduk.duk_idx_t idx):
                 cduk.duk_pop(ctx)
             return datetime.datetime.utcfromtimestamp(epoch_s)
         else:
-            cduk.duk_pop(ctx)
-        return to_python_dict(pyctx, idx)
-    else:
-        return 'unknown'
-        # raise TypeError("not_coercible", cduk.duk_get_type(ctx, idx))
+            dct = to_python_dict(pyctx, idx)
+            if pyctx.to_py_hook:
+                to_py_hook_result = pyctx.to_py_hook(dct, instanceof)
+                if to_py_hook_result:
+                    return to_py_hook_result
+            return dct
+
+    return 'unknown'
+    # raise TypeError("not_coercible", cduk.duk_get_type(ctx, idx))
 
 
 cdef cduk.duk_ret_t js_func_wrapper(cduk.duk_context *ctx):
@@ -695,29 +702,63 @@ cdef to_js(Context pyctx, value):
 
     if value is None:
         cduk.duk_push_null(ctx)
+        return
     elif isinstance(value, str):
         cduk.duk_push_string(ctx, smart_str(value))
+        return
     elif isinstance(value, bool):
         if value:
             cduk.duk_push_true(ctx)
         else:
             cduk.duk_push_false(ctx)
+        return
     elif isinstance(value, int):
         cduk.duk_push_int(ctx, value)
+        return
     elif isinstance(value, float):
         cduk.duk_push_number(ctx, value)
+        return
     elif isinstance(value, (list, tuple)):
         to_js_array(pyctx, value)
+        return
     elif isinstance(value, dict):
         to_js_dict(pyctx, value)
+        return
     elif isinstance(value, (datetime.datetime,
                             datetime.date,
                             datetime.time)):
         to_js_date(pyctx, value)
+        return
+    elif isinstance(value, JsNew):
+        value(pyctx)
+        return
     elif callable(value):
         to_js_func(pyctx, PyFunc(value))
+        return
     elif isinstance(value, PyFunc):
         to_js_func(pyctx, value)
+        return
+    elif pyctx.to_js_hook:
+        to_js_hook_result = pyctx.to_js_hook(value, JsNew)
+        if to_js_hook_result:
+            to_js(pyctx, to_js_hook_result)
+            return
+
+    raise TypeError("to_js failed for %s" % value.__class__.__name__)
+
+
+class JsNew:
+
+    def __init__(self, name, *args):
+        self.name = name
+        self.args = args
+
+    def __call__(self, Context pyctx):
+        if not duk_get_global_dotted_string(pyctx, smart_str(self.name)):
+            raise ValueError("'%s' is undefined" % self.name)
+        for arg in self.args:
+            to_js(pyctx, arg)
+        duk_reraise(pyctx, cduk.duk_pnew(pyctx.ctx, len(self.args)))
 
 
 class Type:
@@ -746,10 +787,14 @@ cdef class Context:
 
     cdef cduk.duk_context *ctx
     cdef object module_path
+    cdef object to_js_hook
+    cdef object to_py_hook
 
-    def __init__(self, module_path=None):
+    def __init__(self, module_path=None, to_js_hook=None, to_py_hook=None):
         self.ctx = cduk.duk_create_heap_default()
         self.module_path = module_path
+        self.to_js_hook = to_js_hook
+        self.to_py_hook = to_py_hook
         self.setup()
 
     def __dealloc__(self):
@@ -874,6 +919,8 @@ cdef class ThreadContext(Context):
     def __init__(self, Context parent_pyctx, new_globalenv):
         self.parent_pyctx = parent_pyctx
         self.module_path = parent_pyctx.module_path
+        self.to_js_hook = parent_pyctx.to_js_hook
+        self.to_py_hook = parent_pyctx.to_py_hook
         cduk.duk_push_global_stash(self.parent_pyctx.ctx)                   # [ ... stash ]
         cduk.duk_get_prop_string(self.parent_pyctx.ctx, -1, b"_threads")     # [ ... stash _threads ]
         if new_globalenv:
