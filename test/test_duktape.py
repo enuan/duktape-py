@@ -111,6 +111,16 @@ def test_push_plain_func():
     assert ctx['y'] == 'bar'
 
 
+def test_py_func_with_dict_arg_works():
+    def foo(x):
+        return x == {'foo': 1, 'bar': 2}
+
+    ctx = duktape.Context()
+    ctx['foo'] = foo
+    assert ctx.eval('foo({"a": 1}) == false;')
+    assert ctx.eval('foo({"foo": 1, "bar": 2}) == true;')
+
+
 def test_load_file_with_syntax_error():
     ctx = duktape.Context()
     with tempfile.NamedTemporaryFile() as tf:

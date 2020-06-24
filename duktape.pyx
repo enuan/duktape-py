@@ -218,7 +218,7 @@ cdef to_python_dict(Context pyctx, cduk.duk_idx_t idx):
     cdef cduk.duk_context *ctx = pyctx.ctx
     ret = {}
     cduk.duk_enum(ctx, idx, cduk.DUK_ENUM_OWN_PROPERTIES_ONLY)
-    while cduk.duk_next(ctx, idx, 1):
+    while cduk.duk_next(ctx, -1, 1):
         ret[to_python(pyctx, -2)] = to_python(pyctx, -1)
         cduk.duk_pop_n(ctx, 2)
     cduk.duk_pop_n(ctx, 1)
