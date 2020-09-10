@@ -218,8 +218,17 @@ def test_required_inside_load():
     assert ctx['baz']['fruit'] == 'Apple'
 
 
-def test_strict_load():
-    ctx = duktape.Context()
+def test_force_strict_true():
+    ctx = duktape.Context(force_strict=True)
+
+    ctx['x'] = 17
+    assert ctx.eval('var x = 42; x;') == 42
+    assert ctx['x'] == 17
+
+    with pytest.raises(duktape.Error) as error:
+        ctx.eval('var y; delete y;')
+    assert "SyntaxError" in str(error.value)
+    assert "cannot delete identifier" in str(error.value)
 
     with tempfile.NamedTemporaryFile(suffix='.js', dir=TEST_DIR) as tf:
         tf.write(b"""const foo = function(x) {
@@ -227,15 +236,32 @@ def test_strict_load():
         }""")
         tf.flush()
 
-        ctx.load(os.path.join(tf.name), strict=True)
+        ctx.load(os.path.join(tf.name))
         with pytest.raises(duktape.Error) as error:
             ctx.eval('foo(10)')
         assert "ReferenceError" in str(error.value)
         assert "identifier 'bar' undefined" in str(error.value)
 
-        ctx.load(os.path.join(tf.name), strict=False)
+
+def test_force_strict_false():
+    ctx = duktape.Context(force_strict=False)
+
+    ctx['x'] = 17
+    assert ctx.eval('var x = 42; x;') == 42
+    assert ctx['x'] == 42
+
+    ctx.eval('var y; delete y;')
+
+    with tempfile.NamedTemporaryFile(suffix='.js', dir=TEST_DIR) as tf:
+        tf.write(b"""const foo = function(x) {
+            bar = x;
+        }""")
+        tf.flush()
+
+        ctx.load(os.path.join(tf.name))
         ctx.eval('foo(10)')
         assert ctx['bar'] == 10
+
 
 def test_js_func_invocation_after_context_gc():
     ctx = duktape.Context()

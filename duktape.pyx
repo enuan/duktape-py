@@ -179,10 +179,14 @@ cdef cduk.duk_ret_t duk_load_module(cduk.duk_context *ctx):
         cduk.fileio_push_file_string(ctx, smart_str(resolved_id))
         cduk.duk_concat(ctx, 2)
     else:
-        # automatically force strict mode for loaded modules
-        cduk.duk_push_string(ctx, b"'use strict';")
-        cduk.fileio_push_file_string(ctx, smart_str(resolved_id))
-        cduk.duk_concat(ctx, 2)
+        pyctx = duk_get_pyctx(ctx)
+        if pyctx.force_strict:
+            # force strict mode for loaded modules
+            cduk.duk_push_string(ctx, b"'use strict';")
+            cduk.fileio_push_file_string(ctx, smart_str(resolved_id))
+            cduk.duk_concat(ctx, 2)
+        else:
+            cduk.fileio_push_file_string(ctx, smart_str(resolved_id))
     return 1
 
 
@@ -538,10 +542,7 @@ cdef to_python(Context pyctx, cduk.duk_idx_t idx):
     # raise TypeError("not_coercible", cduk.duk_get_type(ctx, idx))
 
 
-cdef cduk.duk_ret_t js_func_wrapper(cduk.duk_context *ctx):
-    # [ args... ]
-    cdef cduk.duk_int_t nargs
-
+cdef duk_get_pyctx(cduk.duk_context *ctx):
     cduk.duk_push_thread_stash(ctx, ctx)
     cduk.duk_get_prop_string(ctx, -1, b"_pythr_pointer")
     if cduk.duk_is_undefined(ctx, -1):
@@ -552,7 +553,14 @@ cdef cduk.duk_ret_t js_func_wrapper(cduk.duk_context *ctx):
     else:
         pyctx = <ThreadContext>cduk.duk_get_pointer(ctx, -1)
     cduk.duk_pop_n(ctx, 2)
+    return pyctx
 
+
+cdef cduk.duk_ret_t js_func_wrapper(cduk.duk_context *ctx):
+    # [ args... ]
+    cdef cduk.duk_int_t nargs
+
+    pyctx = duk_get_pyctx(ctx)
     nargs = cduk.duk_get_top(ctx)
     cduk.duk_push_current_function(ctx)
 
@@ -789,13 +797,19 @@ cdef class Context:
     cdef object module_path
     cdef object to_js_hook
     cdef object to_py_hook
+    cdef object force_strict
 
-    def __init__(self, module_path=None, to_js_hook=None, to_py_hook=None):
+    def __init__(self, module_path=None, to_js_hook=None, to_py_hook=None, force_strict=False):
         self.ctx = cduk.duk_create_heap_default()
         self.module_path = module_path
         self.to_js_hook = to_js_hook
         self.to_py_hook = to_py_hook
+        self.force_strict = force_strict
         self.setup()
+
+    @property
+    def force_strict(self):
+        return self.force_strict
 
     def __dealloc__(self):
         if self.ctx:
@@ -840,7 +854,7 @@ cdef class Context:
     def __len__(self):
         return cduk.duk_get_top(self.ctx)
 
-    def load(self, filename, strict=False):
+    def load(self, filename):
         # Global code: compiles into a function with zero arguments, which
         # executes like a top level ECMAScript program
         #
@@ -865,7 +879,7 @@ cdef class Context:
             cduk.fileio_push_file_string(self.ctx, smart_str(filename)) # [ ... source ]
             cduk.duk_push_string(self.ctx, smart_str(filename)) # [ ... source filename ]
             compile_flags = 0
-            if strict:
+            if self.force_strict:
                 compile_flags |= cduk.DUK_COMPILE_STRICT
             duk_reraise(self, cduk.duk_pcompile(self.ctx, compile_flags)) # [ ... func ]
             # bind 'this' to global object
@@ -881,7 +895,13 @@ cdef class Context:
     def eval(self, js):
         # Eval code: compiles into a function with zero arguments, which
         # executes like an ECMAScript eval call
-        duk_reraise(self, cduk.duk_peval_string(self.ctx, smart_str(js)))
+        cduk.duk_push_string(self.ctx, smart_str(js))       # [ ... source ]
+        cduk.duk_push_string(self.ctx, b"eval")             # [ ... source eval ]
+        compile_flags = cduk.DUK_COMPILE_EVAL
+        if self.force_strict:
+            compile_flags |= cduk.DUK_COMPILE_STRICT
+        duk_reraise(self, cduk.duk_pcompile(self.ctx, compile_flags)) # [ ... func ]
+        duk_reraise(self, cduk.duk_pcall(self.ctx, 0)) # [ ... retval ]
         return to_python(self, -1)
 
     loads = eval
@@ -921,6 +941,7 @@ cdef class ThreadContext(Context):
         self.module_path = parent_pyctx.module_path
         self.to_js_hook = parent_pyctx.to_js_hook
         self.to_py_hook = parent_pyctx.to_py_hook
+        self.force_strict = parent_pyctx.force_strict
         cduk.duk_push_global_stash(self.parent_pyctx.ctx)                   # [ ... stash ]
         cduk.duk_get_prop_string(self.parent_pyctx.ctx, -1, b"_threads")     # [ ... stash _threads ]
         if new_globalenv:
