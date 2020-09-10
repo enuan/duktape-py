@@ -511,10 +511,11 @@ cdef to_python(Context pyctx, cduk.duk_idx_t idx):
         return to_python_proxy(pyctx, idx)
     elif cduk.duk_is_object(ctx, idx):
         def instanceof(name):
+            norm_idx = cduk.duk_normalize_index(ctx, idx)
             if not duk_get_global_dotted_string(pyctx, smart_str(name)):
                 return False
             try:
-                return bool(cduk.duk_instanceof(ctx, idx-1, -1))
+                return bool(cduk.duk_instanceof(ctx, norm_idx, -1))
             finally:
                 cduk.duk_pop(ctx)
 
