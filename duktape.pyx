@@ -117,19 +117,14 @@ cdef cduk.duk_ret_t duk_resolve_module(cduk.duk_context *ctx):
         module_id_path = os.path.join(os.path.dirname(parent_id), module_id)
         module_file = load_as_file(module_id_path) or load_as_dir(module_id_path)
     else:
-        cduk.duk_push_current_function(ctx)
-        cduk.duk_get_prop_string(ctx, -1, b'module_paths')
-        for i in range(cduk.duk_get_length(ctx, -1)):
-            cduk.duk_get_prop_index(ctx, -1, i)
-            module_path = force_unicode(cduk.duk_require_string(ctx, -1))
-            cduk.duk_pop(ctx)
+        pyctx = duk_get_pyctx(ctx)
+        for module_path in pyctx.module_paths:
             module_id_path = os.path.join(module_path, module_id)
             module_file = load_as_file(module_id_path) or load_as_dir(module_id_path)
             if module_file:
                 break
         else:
             module_file = None
-        cduk.duk_pop_n(ctx, 2)
 
     if module_file and os.path.isfile(module_file):
         cduk.duk_push_string(ctx, smart_str(os.path.normpath(module_file)))
@@ -812,6 +807,13 @@ cdef class Context:
     def force_strict(self):
         return self.force_strict
 
+    @property
+    def module_paths(self):
+        if isinstance(self.module_path, list):
+            return self.module_path
+        else:
+            return [self.module_path]
+
     def __dealloc__(self):
         if self.ctx:
             cduk.duk_destroy_heap(self.ctx)
@@ -830,12 +832,6 @@ cdef class Context:
         if self.module_path:
             cduk.duk_push_object(self.ctx);
             cduk.duk_push_c_function(self.ctx, duk_resolve_module, cduk.DUK_VARARGS);
-            if isinstance(self.module_path, list):
-                module_paths = self.module_path
-            else:
-                module_paths = [self.module_path]
-            to_js_array(self, module_paths)
-            cduk.duk_put_prop_string(self.ctx, -2, b"module_paths")
             cduk.duk_put_prop_string(self.ctx, -2, b"resolve");
             cduk.duk_push_c_function(self.ctx, duk_load_module, cduk.DUK_VARARGS);
             cduk.duk_put_prop_string(self.ctx, -2, b"load");
