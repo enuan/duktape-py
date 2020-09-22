@@ -574,7 +574,14 @@ cdef cduk.duk_ret_t js_func_wrapper(cduk.duk_context *ctx):
     cduk.duk_pop(ctx)
 
     args = [to_python(pyctx, idx) for idx in range(nargs)]
-    to_js(pyctx, func(*args))
+    try:
+        to_js(pyctx, func(*args))
+    except Exception, e:
+        try:
+            to_js(pyctx, e)
+        except TypeError, e:
+            cduk.duk_generic_error(ctx, smart_str(str(e)))
+        cduk.duk_throw(ctx)
     return 1
 
 

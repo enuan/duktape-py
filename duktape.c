@@ -19279,7 +19279,7 @@ static PyObject *__pyx_pf_7duktape_7Context_4setup(struct __pyx_obj_7duktape_Con
  *             cduk.duk_put_prop_string(self.ctx, -2, b"load");
  *             cduk.duk_module_node_init(self.ctx)             # <<<<<<<<<<<<<<
  * 
- *         # ThreadOnly
+ *         # ThreadOnly constructor
  */
     duk_module_node_init(__pyx_v_self->ctx);
 
@@ -19294,7 +19294,7 @@ static PyObject *__pyx_pf_7duktape_7Context_4setup(struct __pyx_obj_7duktape_Con
 
   /* "duktape.pyx":924
  * 
- *         # ThreadOnly
+ *         # ThreadOnly constructor
  *         cduk.duk_push_c_function(self.ctx, thread_only_constructor, 1)             # <<<<<<<<<<<<<<
  *         cduk.duk_push_object(self.ctx)
  *         cduk.duk_put_prop_string(self.ctx, -2, "prototype")
@@ -19302,7 +19302,7 @@ static PyObject *__pyx_pf_7duktape_7Context_4setup(struct __pyx_obj_7duktape_Con
   (void)(duk_push_c_function(__pyx_v_self->ctx, __pyx_f_7duktape_thread_only_constructor, 1));
 
   /* "duktape.pyx":925
- *         # ThreadOnly
+ *         # ThreadOnly constructor
  *         cduk.duk_push_c_function(self.ctx, thread_only_constructor, 1)
  *         cduk.duk_push_object(self.ctx)             # <<<<<<<<<<<<<<
  *         cduk.duk_put_prop_string(self.ctx, -2, "prototype")
