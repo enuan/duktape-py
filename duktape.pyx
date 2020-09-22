@@ -10,6 +10,7 @@ import os
 import threading
 import sys
 import struct
+import weakref
 from libc.stdio cimport printf
 
 import pytz
@@ -916,7 +917,31 @@ cdef class Context:
         return Type(cduk.duk_get_type(self.ctx, idx))
 
     def new_thread(self, new_globalenv):
-        return ThreadContext(self, new_globalenv)
+        if new_globalenv:
+            thr_idx = cduk.duk_push_thread_new_globalenv(self.ctx)
+        else:
+            thr_idx = cduk.duk_push_thread(self.ctx)
+        thr = ThreadContext(self, thr_idx, new_globalenv)
+        thr_id = str(id(thr))
+
+        # Store a reference to the thread so that it is reachable from a
+        # garbage collection point of view
+        cduk.duk_push_global_stash(self.ctx)                            # [ ... thr stash ]
+        cduk.duk_get_prop_string(self.ctx, -1, b"_threads")             # [ ... thr stash _threads ]
+        cduk.duk_dup(self.ctx, thr_idx)                                 # [ ... thr stash _threads thr ]
+        cduk.duk_put_prop_string(self.ctx, -2, smart_str(thr_id))       # [ ... thr stash _threads ]
+        cduk.duk_pop_n(self.ctx, 3)                                     # [ ... ]
+
+        def finalize_thread(thr_id):
+            # Make the thread unreachable so that it can be garbage collected
+            # (assuming there are no other references to it)
+            cduk.duk_push_global_stash(self.ctx)                        # [ ... stash ]
+            cduk.duk_get_prop_string(self.ctx, -1, b"_threads")         # [ ... stash _threads ]
+            cduk.duk_del_prop_string(self.ctx, -1, smart_str(thr_id))
+            cduk.duk_pop_n(self.ctx, 2)                                 # [ ... ]
+        weakref.finalize(thr, finalize_thread, thr_id)
+
+        return thr
 
     def proxy(self, key):
         if not duk_get_global_dotted_string(self, smart_str(key)):
@@ -928,34 +953,26 @@ cdef class Context:
             cduk.duk_pop(self.ctx)
 
 
-
 cdef class ThreadContext(Context):
 
     cdef Context parent_pyctx
+    cdef object __weakref__
 
-    def __init__(self, Context parent_pyctx, new_globalenv):
+    def __init__(self, Context parent_pyctx, thr_idx, new_globalenv):
         self.parent_pyctx = parent_pyctx
         self.module_path = parent_pyctx.module_path
         self.to_js_hook = parent_pyctx.to_js_hook
         self.to_py_hook = parent_pyctx.to_py_hook
         self.force_strict = parent_pyctx.force_strict
-        cduk.duk_push_global_stash(self.parent_pyctx.ctx)                   # [ ... stash ]
-        cduk.duk_get_prop_string(self.parent_pyctx.ctx, -1, b"_threads")     # [ ... stash _threads ]
         if new_globalenv:
-            thr_idx = cduk.duk_push_thread_new_globalenv(parent_pyctx.ctx)  # [ ... stash _threads thread ]
             self.ctx = cduk.duk_get_context(parent_pyctx.ctx, thr_idx)
             self.setup()
         else:
-            thr_idx = cduk.duk_push_thread(parent_pyctx.ctx)                # [ ... stash _threads thread ]
             self.ctx = cduk.duk_get_context(parent_pyctx.ctx, thr_idx)
             cduk.duk_push_thread_stash(self.ctx, self.ctx)
             cduk.duk_push_pointer(self.ctx, <void*>self)
             cduk.duk_put_prop_string(self.ctx, -2, b"_pythr_pointer")
             cduk.duk_pop(self.ctx)
-        # Store a reference to the thread so that it is reachable from a
-        # garbage collection point of view
-        cduk.duk_put_prop_string(self.parent_pyctx.ctx, -2, smart_str(str(id(self))))  # [ ... stash _threads ]
-        cduk.duk_pop_n(self.parent_pyctx.ctx, 2) # [ ... ]
 
     def __dealloc__(self):
         # Cython: When subclassing extension types, be aware that the
@@ -969,12 +986,6 @@ cdef class ThreadContext(Context):
         #
         #   duk_destroy_heap: If ctx is NULL, the call is a no-op.
         #
-        # Make the thread unreachable so that it can be garbage collected
-        # (assuming there are no other references to it)
-        cduk.duk_push_global_stash(self.parent_pyctx.ctx)                   # [ ... stash ]
-        cduk.duk_get_prop_string(self.parent_pyctx.ctx, -1, b"_threads")     # [ ... stash _threads ]
-        cduk.duk_del_prop_string(self.parent_pyctx.ctx, -1, smart_str(str(id(self))))
-        cduk.duk_pop_n(self.parent_pyctx.ctx, 2)                            # [ ... ]
         self.ctx = NULL
 
     def suspend(self):

@@ -300,18 +300,42 @@ def test_thread_basic():
     assert th['foo'] == 10
     th['bar'] = 20
     assert th['bar'] == 20
+    assert th.eval('foo + bar') == 30
+
     assert ctx['bar'] == 20
 
 
 def test_thread_new_globalenv():
     ctx = duktape.Context()
-    ctx['foo'] = 10
+    ctx['foo'] = 5
 
     th = ctx.new_thread(True)
     assert th['foo'] is None
+    th['foo'] = 10
+    assert th['foo'] == 10
     th['bar'] = 20
     assert th['bar'] == 20
+    assert th.eval('foo + bar') == 30
+
+    assert ctx['foo'] == 5
     assert ctx['bar'] is None
+
+
+def test_thread_deallocation():
+    # CPython implementation detail: It is possible for a reference cycle to
+    # prevent the reference count of an object from going to zero. In this
+    # case, the cycle will be later detected and deleted by the cyclic garbage
+    # collector. A common cause of reference cycles is when an exception has
+    # been caught in a local variable. The frame’s locals then reference the
+    # exception, which references its own traceback, which references the
+    # locals of all frames caught in the traceback.
+    ctx = duktape.Context()
+    th = ctx.new_thread(False)
+    keep_err = None
+    try:
+        th.eval('foo')
+    except duktape.Error as err:
+        keep_err = err
 
 
 def test_thread_garbage_collection():
