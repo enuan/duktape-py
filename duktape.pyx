@@ -10,6 +10,7 @@ import os
 import threading
 import sys
 import struct
+import uuid
 import weakref
 from libc.stdio cimport printf
 
@@ -766,6 +767,80 @@ class JsNew:
         duk_reraise(pyctx, cduk.duk_pnew(pyctx.ctx, len(self.args)))
 
 
+cdef cduk.duk_ret_t thread_only_constructor(cduk.duk_context *ctx):
+    if not cduk.duk_is_constructor_call(ctx):
+        return cduk.DUK_RET_TYPE_ERROR
+
+    cduk.duk_dup(ctx, 0)
+    if cduk.duk_pnew(ctx, 0):
+        # silenty ignore error and push an empty object as target
+        cduk.duk_pop(ctx)
+        cduk.duk_push_object(ctx)
+    cduk.duk_dup(ctx, 0)
+    cduk.duk_put_prop_string(ctx, -2, DUK_HIDDEN_SYMBOL(b'type'))
+    cduk.duk_get_prop_string(ctx, 0, b'name')
+    cduk.duk_put_prop_string(ctx, -2, DUK_HIDDEN_SYMBOL(b'name'))
+    cduk.duk_push_string(ctx, smart_str(str(uuid.uuid4())))
+    cduk.duk_put_prop_string(ctx, -2, DUK_HIDDEN_SYMBOL(b'id'))
+    cduk.duk_push_object(ctx)  # [ ... target handler ]
+    cduk.duk_push_c_function(ctx, thread_only_get_handler, 3)
+    cduk.duk_put_prop_string(ctx, -2, "get")
+    cduk.duk_push_c_function(ctx, thread_only_set_handler, 4)
+    cduk.duk_put_prop_string(ctx, -2, "set")
+    cduk.duk_push_proxy(ctx, 0)  # [ ... target handler ] -> [ ... proxy ]
+
+    # Return the 'result' object: replaces the default instance.
+    return 1;
+
+
+cdef cduk.duk_ret_t thread_only_get_handler(cduk.duk_context *ctx):
+    # 'this' binding: handler
+    # [0]: target
+    # [1]: prop
+    # [2]: receiver (proxy)
+    #
+    cduk.duk_push_thread_stash(ctx, ctx)
+    cduk.duk_get_prop_string(ctx, 0, DUK_HIDDEN_SYMBOL(b'id'))
+    cduk.duk_get_prop(ctx, -2)
+    if cduk.duk_is_undefined(ctx, -1):
+        cduk.duk_pop(ctx)
+        cduk.duk_generic_error(ctx, smart_str("ThreadOnly has not been initialized!"))
+        return 1
+
+    local_idx = cduk.duk_normalize_index(ctx, -1)
+    cduk.duk_dup(ctx, 1)
+    cduk.duk_get_prop(ctx, local_idx)
+    if cduk.duk_is_function(ctx, -1):
+        cduk.duk_push_string(ctx, "bind")
+        cduk.duk_dup(ctx, local_idx)
+        cduk.duk_pcall_prop(ctx, -3, 1)
+
+    return 1
+
+
+cdef cduk.duk_ret_t thread_only_set_handler(cduk.duk_context *ctx):
+    # 'this' binding: handler
+    # [0]: target
+    # [1]: prop
+    # [2]: val
+    # [3]: receiver (proxy)
+    #
+
+    cduk.duk_push_thread_stash(ctx, ctx)
+    cduk.duk_get_prop_string(ctx, 0, DUK_HIDDEN_SYMBOL(b'id'))
+    cduk.duk_get_prop(ctx, -2)
+    if cduk.duk_is_undefined(ctx, -1):
+        cduk.duk_pop(ctx)
+        cduk.duk_generic_error(ctx, smart_str("ThreadOnly has not been initialized!"))
+        return 1
+
+    cduk.duk_dup(ctx, 1)
+    cduk.duk_dup(ctx, 2)
+    cduk.duk_put_prop(ctx, -3)
+
+    return 1
+
+
 class Type:
 
     mapping = {
@@ -837,6 +912,12 @@ cdef class Context:
             cduk.duk_push_c_function(self.ctx, duk_load_module, cduk.DUK_VARARGS);
             cduk.duk_put_prop_string(self.ctx, -2, b"load");
             cduk.duk_module_node_init(self.ctx)
+
+        # ThreadOnly constructor
+        cduk.duk_push_c_function(self.ctx, thread_only_constructor, 1)
+        cduk.duk_push_object(self.ctx)
+        cduk.duk_put_prop_string(self.ctx, -2, "prototype")
+        cduk.duk_put_global_string(self.ctx, "ThreadOnly")
 
     def __bool__(self):
         return True
@@ -995,6 +1076,16 @@ cdef class ThreadContext(Context):
 
     def resume(self, ThreadState state):
         cduk.duk_resume(self.ctx, &state.ts)
+
+    def init_thread_only(self, key, *args):
+        duk_get_global_dotted_string(self, smart_str(key))
+        cduk.duk_push_thread_stash(self.ctx, self.ctx)
+        cduk.duk_get_prop_string(self.ctx, -2, DUK_HIDDEN_SYMBOL(b'id'))
+        cduk.duk_get_prop_string(self.ctx, 0, DUK_HIDDEN_SYMBOL(b'type'))
+        for arg in args:
+            to_js(self, arg)
+        duk_reraise(self, cduk.duk_pnew(self.ctx, len(args)))
+        cduk.duk_put_prop(self.ctx, -3)
 
 
 cdef class ThreadState(object):

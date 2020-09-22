@@ -40,6 +40,7 @@ cdef extern from "duktape_c/duktape.h":
     unsigned int DUK_COMPILE_SHEBANG
 
     unsigned int DUK_ENUM_OWN_PROPERTIES_ONLY
+    unsigned int DUK_RET_TYPE_ERROR
 
     duk_int_t DUK_VARARGS
 
@@ -139,6 +140,7 @@ cdef extern from "duktape_c/duktape.h":
     const char *duk_json_encode(duk_context *ctx, duk_idx_t idx)
     void duk_get_prototype(duk_context *ctx, duk_idx_t idx)
     duk_bool_t duk_strict_equals(duk_context *ctx, duk_idx_t idx1, duk_idx_t idx2)
+    duk_bool_t duk_is_constructor_call(duk_context *ctx)
 
 cdef extern from "fileio.c":
     void fileio_push_file_string(duk_context *ctx, const char *filename)

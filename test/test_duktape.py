@@ -331,11 +331,11 @@ def test_thread_deallocation():
     # locals of all frames caught in the traceback.
     ctx = duktape.Context()
     th = ctx.new_thread(False)
-    keep_err = None
+    caught_err = None
     try:
         th.eval('foo')
     except duktape.Error as err:
-        keep_err = err
+        caught_err = err
 
 
 def test_thread_garbage_collection():
@@ -687,3 +687,62 @@ def test_custom_hooks_for_exceptions():
         }
     }""")
     assert ctx['foo_err'] == 'bar'
+
+
+def test_thread_only():
+    ctx = duktape.Context()
+
+    ctx.eval("""function Foo(x) {
+        this.x = x;
+    }
+    Foo.prototype.bar = function() {
+        return this.x;
+    }
+    var foo = new ThreadOnly(Foo)""")
+
+    with pytest.raises(duktape.Error) as error:
+        ctx.eval('foo.x')
+    assert "ThreadOnly has not been initialized" in str(error.value)
+
+    th1 = ctx.new_thread(False)
+    th1_state = th1.suspend()
+    th2 = ctx.new_thread(False)
+    th2_state = th2.suspend()
+
+    th1.resume(th1_state)
+    with pytest.raises(duktape.Error) as error:
+        th1.eval('foo.x')
+    assert "ThreadOnly has not been initialized" in str(error.value)
+    th1.init_thread_only('foo', 'bob')
+    assert th1.eval('foo.x == "bob"')
+    assert th1.eval('foo.bar() == "bob"')
+    th1_state = th1.suspend()
+
+    th2.resume(th2_state)
+    with pytest.raises(duktape.Error) as error:
+        th2.eval('foo.x')
+    assert "ThreadOnly has not been initialized" in str(error.value)
+    th2.init_thread_only('foo', 'alice')
+    assert th2.eval('foo.x == "alice"')
+    assert th2.eval('foo.bar() == "alice"')
+    th2_state = th2.suspend()
+
+    th1.resume(th1_state)
+    th1.eval('foo.x = 10')
+    assert th1.eval('foo.x = 10')
+    assert th1.eval('foo.bar() == 10')
+    th1_state = th1.suspend()
+
+    th2.resume(th2_state)
+    assert th2.eval('foo.x == "alice"')
+    th2.eval('foo.x = 20')
+    th2_state = th2.suspend()
+
+    th1.resume(th1_state)
+    assert th1.eval('foo.x = 10')
+    th1_state = th1.suspend()
+
+    th2.resume(th2_state)
+    assert th2.eval('foo.x = 20')
+    assert th2.eval('foo.bar() == 20')
+    th2_state = th2.suspend()
