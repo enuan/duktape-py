@@ -12,12 +12,13 @@ import sys
 import struct
 import uuid
 import weakref
+from collections import defaultdict
 from libc.stdio cimport printf
+from libc.stdint cimport uintptr_t
 
 import pytz
 
 
-cdef cduk.duk_int_t _ref_map_next_id = 1
 
 
 class Error(Exception):
@@ -227,30 +228,50 @@ cdef to_python_dict(Context pyctx, cduk.duk_idx_t idx):
 
 
 cdef to_python_proxy(Context pyctx, cduk.duk_idx_t idx, pojo_only=True):
-    global _ref_map_next_id
-
     cdef cduk.duk_context *ctx = pyctx.ctx
-    cdef cduk.duk_int_t _ref_id = _ref_map_next_id
-    _ref_map_next_id += 1
 
     norm_idx = cduk.duk_normalize_index(ctx, idx)
-
-    cduk.duk_push_global_stash(ctx)  # [ ... stash ]
-    cduk.duk_get_prop_string(ctx, -1, b"_ref_map")  # [ ... stash _ref_map ]
-    cduk.duk_push_int(ctx, _ref_id)  # [ ... stash _ref_map id ]
-    cduk.duk_dup(ctx, norm_idx)  # [ ... stash _ref_map id func ]
-    cduk.duk_put_prop(ctx, -3)  # [ ... stash _ref_map ]
-    cduk.duk_pop_n(ctx, 2)
+    ref_id = hex(<uintptr_t>cduk.duk_get_heapptr(ctx, norm_idx))
 
     if cduk.duk_is_function(ctx, idx):
-        return JsFunc(pyctx, _ref_id)
+        proxy = JsFunc(pyctx, ref_id)
     elif cduk.duk_is_array(ctx, idx):
-        return JsArray(pyctx, _ref_id)
+        proxy = JsArray(pyctx, ref_id)
     elif duk_is_plain_object(pyctx, idx) or \
             (not pojo_only and cduk.duk_is_object(pyctx.ctx, idx)):
-        return JsObject(pyctx, _ref_id)
+        proxy = JsObject(pyctx, ref_id)
+    else:
+        raise TypeError("not proxable")
 
-    raise TypeError("not proxable")
+    cduk.duk_push_global_stash(ctx)                                 # [ ... stash ]
+    cduk.duk_get_prop_string(ctx, -1, b"_ref_map")                  # [ ... stash _ref_map ]
+    cduk.duk_dup(ctx, norm_idx)                                     # [ ... stash _ref_map func ]
+    cduk.duk_put_prop_string(ctx, -2, smart_str(ref_id))            # [ ... stash _ref_map ]
+    cduk.duk_pop(ctx)                                               # [ ... stash ]
+    cduk.duk_get_prop_string(ctx, -1, b"_ref_count")                # [ ... stash _ref_count ]
+    cduk.duk_get_prop_string(ctx, -1, smart_str(ref_id))            # [ ... stash _ref_count counter ]
+    cduk.duk_push_int(ctx, cduk.duk_get_int_default(ctx, -1, 0)+1)  # [ ... stash _ref_count counter new_counter ]
+    cduk.duk_put_prop_string(ctx, -3, smart_str(ref_id))            # [ ... stash _ref_count counter ]
+    cduk.duk_pop_n(ctx, 3)                                          # [ ... ]
+
+    def finalize_proxy(ref_id):
+        cduk.duk_push_global_stash(ctx)                             # [ ... stash ]
+        cduk.duk_get_prop_string(ctx, -1, b"_ref_count")            # [ ... stash _ref_count ]
+        cduk.duk_get_prop_string(ctx, -1, smart_str(ref_id))        # [ ... stash _ref_count counter ]
+        ref_count = cduk.duk_require_int(ctx, -1) - 1
+        if ref_count == 0:
+            cduk.duk_del_prop_string(ctx, -2, smart_str(ref_id))    # [ ... stash _ref_count counter ]
+            cduk.duk_pop_n(ctx, 2)                                  # [ ... stash ]
+            cduk.duk_get_prop_string(ctx, -1, b"_ref_map")          # [ ... stash _ref_map ]
+            cduk.duk_del_prop_string(ctx, -1, smart_str(ref_id))    # [ ... stash _ref_map ]
+            cduk.duk_pop_n(ctx, 2)                                  # [ ... ]
+        else:
+            cduk.duk_push_int(ctx, ref_count)                       # [ ... stash _ref_count counter new_counter ]
+            cduk.duk_put_prop_string(ctx, -3, smart_str(ref_id))    # [ ... stash _ref_count counter ]
+            cduk.duk_pop_n(ctx, 3)                                  # [ ... ]
+    weakref.finalize(getattr(proxy, '_proxy', proxy), finalize_proxy, ref_id)
+
+    return proxy
 
 
 cdef duk_is_plain_object(Context pyctx, cduk.duk_idx_t idx):
@@ -284,19 +305,19 @@ def push_and_pop_proxy(f):
 cdef class JsProxy:
 
     cdef Context pyctx
-    cdef cduk.duk_int_t _ref_id
+    cdef object ref_id
+    cdef object __weakref__
 
     def __init__(self, Context pyctx, ref_id):
         self.pyctx = pyctx
-        self._ref_id = ref_id
+        self.ref_id = ref_id
 
     cdef push_proxy_ref(self):
-        cduk.duk_push_global_stash(self.pyctx.ctx)  # -> [ ... stash ]
-        cduk.duk_get_prop_string(self.pyctx.ctx, -1, b"_ref_map")  # -> [ ... stash _ref_map ]
-        cduk.duk_push_int(self.pyctx.ctx, self._ref_id)  # -> [ ... stash _ref_map _ref_id ]
-        cduk.duk_get_prop(self.pyctx.ctx, -2)  # -> [ ... stash _ref_map obj ]
-        cduk.duk_remove(self.pyctx.ctx, -2) # -> [ ... stash obj ]
-        cduk.duk_remove(self.pyctx.ctx, -2) # -> [ ... obj ]
+        cduk.duk_push_global_stash(self.pyctx.ctx)                              # [ ... stash ]
+        cduk.duk_get_prop_string(self.pyctx.ctx, -1, b"_ref_map")               # [ ... stash _ref_map ]
+        cduk.duk_get_prop_string(self.pyctx.ctx, -1, smart_str(self.ref_id))    # [ ... stash _ref_map obj ]
+        cduk.duk_remove(self.pyctx.ctx, -2)                                     # [ ... stash obj ]
+        cduk.duk_remove(self.pyctx.ctx, -2)                                     # [ ... obj ]
 
     cdef pop_proxy_ref(self):
         cduk.duk_pop(self.pyctx.ctx)
@@ -908,6 +929,8 @@ cdef class Context:
         cduk.duk_put_prop_string(self.ctx, -2, b"_pyctx_pointer")
         cduk.duk_push_object(self.ctx)
         cduk.duk_put_prop_string(self.ctx, -2, b"_ref_map")
+        cduk.duk_push_object(self.ctx)
+        cduk.duk_put_prop_string(self.ctx, -2, b"_ref_count")
         cduk.duk_push_object(self.ctx)
         cduk.duk_put_prop_string(self.ctx, -2, b"_threads")
         cduk.duk_pop(self.ctx)
