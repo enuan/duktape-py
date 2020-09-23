@@ -10,7 +10,6 @@ import os
 import threading
 import sys
 import struct
-import uuid
 import weakref
 from collections import defaultdict
 from libc.stdio cimport printf
@@ -804,11 +803,12 @@ cdef cduk.duk_ret_t thread_only_constructor(cduk.duk_context *ctx):
         # silenty ignore error and push an empty object as target
         cduk.duk_pop(ctx)
         cduk.duk_push_object(ctx)
+    target_id = hex(<uintptr_t>cduk.duk_get_heapptr(ctx, -1))
     cduk.duk_dup(ctx, 0)
     cduk.duk_put_prop_string(ctx, -2, DUK_HIDDEN_SYMBOL(b'type'))
     cduk.duk_get_prop_string(ctx, 0, b'name')
     cduk.duk_put_prop_string(ctx, -2, DUK_HIDDEN_SYMBOL(b'name'))
-    cduk.duk_push_string(ctx, smart_str(str(uuid.uuid4())))
+    cduk.duk_push_string(ctx, smart_str(target_id))
     cduk.duk_put_prop_string(ctx, -2, DUK_HIDDEN_SYMBOL(b'id'))
     cduk.duk_push_object(ctx)  # [ ... target handler ]
     cduk.duk_push_c_function(ctx, thread_only_get_handler, 3)
