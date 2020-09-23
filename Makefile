@@ -21,9 +21,8 @@ index:
 	$(MAKE) -C index-checkout -B build
 	$(MAKE) -C index-checkout test
 	mv duktape.c duktape.c.tmp
-	mv index-checkout/duktape.c duktape.c
+	cp index-checkout/duktape.c duktape.c
 	git add duktape.c
 	mv duktape.c.tmp duktape.c
-	rm -rf index-checkout
 
 .PHONY: build clean configure index

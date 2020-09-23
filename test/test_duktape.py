@@ -689,6 +689,19 @@ def test_custom_hooks_for_exceptions():
     assert ctx['foo_err'] == 'bar'
 
 
+def test_custom_hooks_args():
+    ctx = init_ctx_with_hooks()
+
+    def bar(f):
+        return f.x*f.y
+
+    ctx['foo'] = Foo(10, 20)
+    ctx['bar'] = bar
+
+    assert ctx.eval('foo instanceof ns.Foo')
+    assert ctx.eval('bar(foo) == 200')
+
+
 def test_thread_only():
     ctx = duktape.Context()
 
