@@ -10,6 +10,7 @@ cdef extern from "duktape_c/duk_config.h":
     ctypedef duk_small_int_t duk_bool_t
     ctypedef double duk_double_t
     ctypedef duk_uint_t duk_uarridx_t
+    ctypedef duk_int_t duk_errcode_t
 
 cdef extern from "duktape_c/duktape.h":
     ctypedef duk_ret_t (*duk_c_function)(duk_context *ctx)
@@ -41,6 +42,8 @@ cdef extern from "duktape_c/duktape.h":
 
     unsigned int DUK_ENUM_OWN_PROPERTIES_ONLY
     unsigned int DUK_RET_TYPE_ERROR
+
+    unsigned int DUK_ERR_ERROR
 
     duk_int_t DUK_VARARGS
 
@@ -143,6 +146,8 @@ cdef extern from "duktape_c/duktape.h":
     duk_bool_t duk_strict_equals(duk_context *ctx, duk_idx_t idx1, duk_idx_t idx2)
     duk_bool_t duk_is_constructor_call(duk_context *ctx)
     duk_int_t duk_get_int_default(duk_context *ctx, duk_idx_t idx, duk_int_t def_value)
+    duk_idx_t duk_push_error_object(duk_context *ctx, duk_errcode_t err_code, const char *fmt, ...)
+
 
 cdef extern from "fileio.c":
     void fileio_push_file_string(duk_context *ctx, const char *filename)
