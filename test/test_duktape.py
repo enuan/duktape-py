@@ -5,6 +5,7 @@ import random
 import tempfile
 import threading
 import time
+import sys
 
 import duktape
 import pytest
@@ -759,3 +760,25 @@ def test_thread_only():
     assert th2.eval('foo.x = 20')
     assert th2.eval('foo.bar() == 20')
     th2_state = th2.suspend()
+
+
+def test_python_exc_cleared():
+    ctx = duktape.Context()
+
+    def test(s):
+        raise ValueError(s)
+    ctx['test'] = test
+
+    try:
+        ctx.eval("test('1')");
+    except Exception:
+        pass
+
+    assert sys.exc_info() == (None, None, None)
+
+    try:
+        ctx.eval("test('2')")
+    except Exception:
+        pass
+
+    assert sys.exc_info() == (None, None, None)
