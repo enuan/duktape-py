@@ -1091,11 +1091,11 @@ cdef class Context:
             cduk.duk_pop(self.ctx)
 
 
-    def eval(self, js):
+    def eval(self, js, filename="eval"):
         # Eval code: compiles into a function with zero arguments, which
         # executes like an ECMAScript eval call
         cduk.duk_push_string(self.ctx, smart_str(js))       # [ ... source ]
-        cduk.duk_push_string(self.ctx, b"eval")             # [ ... source eval ]
+        cduk.duk_push_string(self.ctx, smart_str(filename)) # [ ... source filename ]
         compile_flags = cduk.DUK_COMPILE_EVAL
         if self.force_strict:
             compile_flags |= cduk.DUK_COMPILE_STRICT
