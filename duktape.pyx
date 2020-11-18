@@ -5,10 +5,9 @@ cimport cpython
 
 import collections.abc
 import datetime
+import importlib
 import json
 import os
-import threading
-import sys
 import struct
 import weakref
 from collections import defaultdict
@@ -86,12 +85,43 @@ cdef duk_context_dump(cduk.duk_context *ctx):
 
 cdef duk_reraise(Context pyctx, cduk.duk_int_t rc):
     if rc:
+        if cduk.duk_has_prop_string(pyctx.ctx, -1, DUK_HIDDEN_SYMBOL(b"python_error")):
+            cduk.duk_get_prop_string(pyctx.ctx, -1, DUK_HIDDEN_SYMBOL(b"python_error"))
+            python_error = <object>cduk.duk_get_pointer(pyctx.ctx, -1)
+            cduk.duk_pop(pyctx.ctx)
+        else:
+            python_error = None
         exc = to_python(pyctx, -1)
         stacktrace = force_unicode(cduk.duk_safe_to_stacktrace(pyctx.ctx, -1))
         cduk.duk_pop(pyctx.ctx)
-        if not isinstance(exc, Exception):
-            exc = Error(stacktrace)
-        raise exc
+        duk_error = Error(stacktrace)
+        if python_error:
+            duk_error.__cause__ = python_error
+        if isinstance(exc, Exception) and not isinstance(exc, Error):
+            raise exc from duk_error
+        else:
+            raise duk_error
+
+
+cdef duk_throw_python_error(Context pyctx, python_error):
+    try:
+        to_js(pyctx, python_error)
+    except TypeError, e:
+        cduk.duk_push_error_object(pyctx.ctx, cduk.DUK_ERR_ERROR, smart_str(str(e)))
+    cpython.Py_INCREF(python_error)
+    cduk.duk_push_pointer(pyctx.ctx, <void*>python_error)
+    cduk.duk_put_prop_string(pyctx.ctx, -2, DUK_HIDDEN_SYMBOL(b"python_error"))
+    cduk.duk_push_c_function(pyctx.ctx, python_error_finalizer, -1)
+    cduk.duk_set_finalizer(pyctx.ctx, -2)
+    cduk.duk_throw(pyctx.ctx)
+
+
+cdef cduk.duk_ret_t python_error_finalizer(cduk.duk_context *ctx):
+    cduk.duk_get_prop_string(ctx, 0, DUK_HIDDEN_SYMBOL(b"python_error"))
+    python_error = <object>cduk.duk_get_pointer(ctx, -1)
+    cduk.duk_pop(ctx)
+    cpython.Py_DECREF(python_error)
+    return 0
 
 
 cdef cduk.duk_ret_t duk_resolve_module(cduk.duk_context *ctx):
@@ -536,7 +566,24 @@ cdef to_python(Context pyctx, cduk.duk_idx_t idx):
             finally:
                 cduk.duk_pop(ctx)
 
-        if instanceof(b"Date"):
+        if instanceof("PythonError"):
+            cduk.duk_get_prop_string(ctx, -1, DUK_HIDDEN_SYMBOL(b'exc_name'))
+            exc_name = to_python_string(pyctx, -1)
+            cduk.duk_pop(ctx)
+            cduk.duk_get_prop_string(ctx, -1, b'args')
+            args = to_python_list(pyctx, -1)
+            cduk.duk_pop(ctx)
+            try:
+                module, exc_name = exc_name.rsplit('.', 1)
+            except ValueError:
+                module = 'builtins'
+            return getattr(importlib.import_module(module), exc_name)(*args)
+        elif instanceof("Error"):
+            cduk.duk_get_prop_string(ctx, -1, b'message')
+            message = to_python_string(pyctx, -1)
+            cduk.duk_pop(ctx)
+            return Error(message)
+        elif instanceof("Date"):
             cduk.duk_get_prop_string(pyctx.ctx, -1, DUK_HIDDEN_SYMBOL(b'epoch_usec'))
             if not cduk.duk_is_undefined(ctx, -1):
                 epoch_s = struct.unpack('q', to_python_bytes(pyctx, -1))[0] / 1e6
@@ -594,18 +641,14 @@ cdef cduk.duk_ret_t js_func_wrapper(cduk.duk_context *ctx):
     cduk.duk_pop(ctx)
 
     args = [to_python(pyctx, idx) for idx in range(nargs)]
-    func_err = None
     try:
         to_js(pyctx, func(*args))
+        func_err = None
     except Exception, e:
         func_err = e
 
     if func_err:
-        try:
-            to_js(pyctx, func_err)
-        except TypeError, e:
-            cduk.duk_push_error_object(ctx, cduk.DUK_ERR_ERROR, smart_str(str(e)))
-        cduk.duk_throw(ctx)
+        duk_throw_python_error(pyctx, func_err)
 
     return 1
 
@@ -782,6 +825,15 @@ cdef to_js(Context pyctx, value):
             to_js(pyctx, to_js_hook_result)
             return
 
+    if isinstance(value, BaseException):
+        exc_type = type(value)
+        exc_name = ""
+        if exc_type.__module__ != 'builtins':
+            exc_name += f"{exc_type.__module__}."
+        exc_name += f"{exc_type.__name__}"
+        to_js(pyctx, JsNew("PythonError", exc_name, str(value), value.args))
+        return
+
     raise TypeError("to_js failed for %s" % value.__class__.__name__)
 
 
@@ -797,6 +849,29 @@ class JsNew:
         for arg in self.args:
             to_js(pyctx, arg)
         duk_reraise(pyctx, cduk.duk_pnew(pyctx.ctx, len(self.args)))
+
+
+cdef cduk.duk_ret_t python_error_constructor(cduk.duk_context *ctx):
+    if not cduk.duk_is_constructor_call(ctx):
+        return cduk.DUK_RET_TYPE_ERROR
+
+    pyctx = duk_get_pyctx(ctx)
+
+    # stack: [ name message args ]
+    cduk.duk_push_this(ctx)
+    cduk.duk_dup(ctx, 0)
+    cduk.duk_put_prop_string(ctx, -2, DUK_HIDDEN_SYMBOL(b'exc_name'))
+    name = to_python_string(pyctx, 0)
+    cduk.duk_push_string(ctx, smart_str(f"PythonError({name})"))
+    cduk.duk_put_prop_string(ctx, -2, b"name")
+    cduk.duk_dup(ctx, 1)
+    cduk.duk_put_prop_string(ctx, -2, b"message")
+    cduk.duk_dup(ctx, 2)
+    cduk.duk_put_prop_string(ctx, -2, b"args")
+    cduk.duk_dup(ctx, 0)
+    cduk.duk_put_prop_string(ctx, -2, b'pyName')
+
+    return 0
 
 
 cdef cduk.duk_ret_t thread_only_constructor(cduk.duk_context *ctx):
@@ -948,11 +1023,21 @@ cdef class Context:
             cduk.duk_put_prop_string(self.ctx, -2, b"load");
             cduk.duk_module_node_init(self.ctx)
 
+        # PythonError constructor
+        cduk.duk_push_c_function(self.ctx, python_error_constructor, 3)
+        cduk.duk_push_object(self.ctx)
+        cduk.duk_get_global_string(self.ctx, b"Error")
+        cduk.duk_get_prop_string(self.ctx, -1, b"prototype")
+        cduk.duk_set_prototype(self.ctx, -3)
+        cduk.duk_pop(self.ctx)
+        cduk.duk_put_prop_string(self.ctx, -2, b"prototype")
+        cduk.duk_put_global_string(self.ctx, b"PythonError")
+
         # ThreadOnly constructor
         cduk.duk_push_c_function(self.ctx, thread_only_constructor, 1)
         cduk.duk_push_object(self.ctx)
-        cduk.duk_put_prop_string(self.ctx, -2, "prototype")
-        cduk.duk_put_global_string(self.ctx, "ThreadOnly")
+        cduk.duk_put_prop_string(self.ctx, -2, b"prototype")
+        cduk.duk_put_global_string(self.ctx, b"ThreadOnly")
 
     def __bool__(self):
         return True

@@ -143,11 +143,12 @@ cdef extern from "duktape_c/duktape.h":
     void duk_remove(duk_context *ctx, duk_idx_t idx)
     const char *duk_json_encode(duk_context *ctx, duk_idx_t idx)
     void duk_get_prototype(duk_context *ctx, duk_idx_t idx)
+    void duk_set_prototype(duk_context *ctx, duk_idx_t idx)
     duk_bool_t duk_strict_equals(duk_context *ctx, duk_idx_t idx1, duk_idx_t idx2)
     duk_bool_t duk_is_constructor_call(duk_context *ctx)
     duk_int_t duk_get_int_default(duk_context *ctx, duk_idx_t idx, duk_int_t def_value)
+    void duk_push_this(duk_context *ctx)
     duk_idx_t duk_push_error_object(duk_context *ctx, duk_errcode_t err_code, const char *fmt, ...)
-
 
 cdef extern from "fileio.c":
     void fileio_push_file_string(duk_context *ctx, const char *filename)

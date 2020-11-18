@@ -129,11 +129,11 @@ def test_load_file_with_syntax_error():
                  b"foo=")
         tf.flush()
 
-        try:
+        with pytest.raises(duktape.Error) as error:
             ctx.load(tf.name)
-        except duktape.Error as e:
-            # error contains filename and line number
-            assert '%s:2' % tf.name in str(e), e
+        err_repr = str(error.getrepr())
+        # error contains filename and line number
+        assert '%s:2' % tf.name in err_repr, err_repr
 
 
 def test_load_file_using_this():
@@ -226,10 +226,12 @@ def test_force_strict_true():
     assert ctx.eval('var x = 42; x;') == 42
     assert ctx['x'] == 17
 
+
     with pytest.raises(duktape.Error) as error:
-        ctx.eval('var y; delete y;')
-    assert "SyntaxError" in str(error.value)
-    assert "cannot delete identifier" in str(error.value)
+         ctx.eval('var y; delete y;')
+    err_repr = str(error.getrepr())
+    assert "SyntaxError" in err_repr, err_repr
+    assert "cannot delete identifier" in err_repr, err_repr
 
     with tempfile.NamedTemporaryFile(suffix='.js', dir=TEST_DIR) as tf:
         tf.write(b"""const foo = function(x) {
@@ -240,8 +242,9 @@ def test_force_strict_true():
         ctx.load(os.path.join(tf.name))
         with pytest.raises(duktape.Error) as error:
             ctx.eval('foo(10)')
-        assert "ReferenceError" in str(error.value)
-        assert "identifier 'bar' undefined" in str(error.value)
+        err_repr = str(error.getrepr())
+        assert "ReferenceError" in err_repr, err_repr
+        assert "identifier 'bar' undefined" in err_repr, err_repr
 
 
 def test_force_strict_false():
@@ -782,3 +785,64 @@ def test_python_exc_cleared():
         pass
 
     assert sys.exc_info() == (None, None, None)
+
+
+class MyError(Exception): pass
+
+
+def test_python_error():
+    ctx = duktape.Context()
+
+    def trigger_value_error(msg):
+        raise ValueError(msg)
+    ctx['trigger_value_error'] = trigger_value_error
+
+    def trigger_my_error(msg):
+        raise MyError(msg)
+    ctx['trigger_my_error'] = trigger_my_error
+
+    ctx.eval("""try {
+        trigger_value_error("test");
+    } catch (e) {
+        if (!(e instanceof PythonError)) {
+            throw "not a PythonError";
+        }
+        if (e.name !== "PythonError(ValueError)") {
+            throw "name is not PythonError(ValueError) => " + e.name;
+        }
+        if (e.pyName !== "ValueError") {
+            throw "pyName is not ValueError => " + e.pyName;
+        }
+        if (e.message !== "test") {
+            throw "message is different => " + e.message;
+        }
+    }""")
+
+    with pytest.raises(ValueError) as error:
+        ctx.eval('trigger_value_error("test")')
+    err_repr = str(error.getrepr())
+    assert "PythonError(ValueError)" in err_repr, err_repr
+    assert error.value.args == ('test', )
+
+    ctx.eval("""try {
+        trigger_my_error("test");
+    } catch (e) {
+        if (!(e instanceof PythonError)) {
+            throw "not a PythonError";
+        }
+        if (e.name !== "PythonError(test.test_duktape.MyError)") {
+            throw "name is not PythonError(test.test_duktape.MyError) => " + e.name;
+        }
+        if (e.pyName !== "test.test_duktape.MyError") {
+            throw "e.name is not MyError => " + e.pyName;
+        }
+        if (e.message !== "test") {
+            throw "e.message is wrong => " + e.message;
+        }
+    }""")
+
+    with pytest.raises(MyError) as error:
+        ctx.eval('trigger_my_error("test")')
+    err_repr = str(error.getrepr())
+    assert "PythonError(test.test_duktape.MyError)" in err_repr, err_repr
+    assert error.value.args == ('test', )
