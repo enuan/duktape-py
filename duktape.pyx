@@ -268,7 +268,7 @@ cdef to_python_proxy(Context pyctx, cduk.duk_idx_t idx, pojo_only=True):
         proxy = JsArray(pyctx, ref_id)
     elif duk_is_plain_object(pyctx, idx) or \
             (not pojo_only and cduk.duk_is_object(pyctx.ctx, idx)):
-        proxy = JsObject(pyctx, ref_id)
+        proxy = JsDict(pyctx, ref_id)
     else:
         raise TypeError("not proxable")
 
@@ -358,8 +358,8 @@ cdef class JsProxy:
 
 class JsObject(object):
 
-    def __init__(self, pyctx, ref_id):
-        self.__dict__['_proxy'] = ObjectProxy(pyctx, ref_id)
+    def __init__(self, proxy):
+        self.__dict__['_proxy'] = proxy
 
     def __str__(self):
         return 'JsObject(%s)' % self._proxy.to_python()
@@ -380,14 +380,11 @@ class JsObject(object):
         self._proxy.delitem(k)
     __delitem__ = __delattr__
 
-    def _asdict(self):
-        return JsDict(self._proxy)
-
 
 class JsDict(collections.abc.MutableMapping):
 
-    def __init__(self, proxy):
-        self._proxy = proxy
+    def __init__(self, pyctx, ref_id):
+        self._proxy = ObjectProxy(pyctx, ref_id)
 
     def __str__(self):
         return 'JsDict(%s)' % self._proxy.to_python()
@@ -407,6 +404,9 @@ class JsDict(collections.abc.MutableMapping):
 
     def __len__(self):
         return self._proxy.length()
+
+    def asobject(self):
+        return JsObject(self._proxy)
 
 
 cdef class ObjectProxy(JsProxy):

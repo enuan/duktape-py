@@ -427,11 +427,11 @@ def test_push_datetime():
     assert ctx['dt_ny'] == ny_dt.astimezone(pytz.utc).replace(tzinfo=None)
 
 
-def test_obj_proxy():
+def test_obj_proxy_asobject():
     ctx = duktape.Context()
     ctx.eval('var foo = {a: 1, b: 2, c:3};')
 
-    foo = ctx.proxy('foo')
+    foo = ctx.proxy('foo').asobject()
     foo['d'] = 4
     assert ctx.eval('foo.d == 4')
     assert foo['d'] == 4
@@ -441,11 +441,11 @@ def test_obj_proxy():
     assert foo.e == 5
 
 
-def test_obj_proxy_as_dict():
+def test_obj_proxy():
     ctx = duktape.Context()
     ctx.eval('var foo = {a: 1, b: 2, c:3};')
 
-    foo = ctx.proxy('foo')._asdict()
+    foo = ctx.proxy('foo')
     assert foo == {'a': 1, 'b': 2, 'c': 3}
     foo['d'] = 4
     assert ctx.eval('foo.d == 4')
@@ -501,7 +501,7 @@ def test_proxy_recursive():
         }
     };''')
 
-    foo = ctx.proxy('foo')
+    foo = ctx.proxy('foo').asobject()
     assert len(foo.a) == 3
     foo.a.append(4)
     assert len(foo.a) == 4
@@ -509,25 +509,25 @@ def test_proxy_recursive():
     ctx.eval('foo.a.push(5)')
     assert list(foo.a) == [1,2,3,4,5]
 
-    assert list(foo.b.a.a) == [1,2,3]
-    foo.b.a.a.append(4)
-    assert list(foo.b.a.a) == [1,2,3,4]
+    assert list(foo.b['a']['a']) == [1,2,3]
+    foo.b['a']['a'].append(4)
+    assert list(foo.b['a']['a']) == [1,2,3,4]
     ctx.eval('foo.b.a.a.push(5)')
-    assert list(foo.b.a.a) == [1,2,3,4,5]
+    assert list(foo.b['a']['a']) == [1,2,3,4,5]
 
-    assert foo.b.a.b.a == 1
-    assert foo.b.a.b.b == 2
-    foo.b.a.b.c = 3
+    assert foo.b['a']['b']['a'] == 1
+    assert foo.b['a']['b']['b'] == 2
+    foo.b['a']['b']['c'] = 3
     assert ctx.eval('foo.b.a.b.c == 3')
     ctx.eval('foo.b.a.b.d = 4')
-    assert foo.b.a.b.d == 4
+    assert foo.b['a']['b']['d'] == 4
 
-    assert len(foo.b.b) == 1
-    assert foo.b.b[0]._asdict() == {'a': 1, 'b': 2}
-    foo.b.b[0].c = 3
+    assert len(foo['b']['b']) == 1
+    assert foo.b['b'][0] == {'a': 1, 'b': 2}
+    foo.b['b'][0]['c'] = 3
     assert ctx.eval('foo.b.b[0].c == 3')
     ctx.eval('foo.b.b[0].d = 4')
-    assert foo.b.b[0].d == 4
+    assert foo.b['b'][0]['d'] == 4
 
 
 def test_proxy_non_pojo():
@@ -538,7 +538,7 @@ def test_proxy_non_pojo():
     }""")
     ctx.eval('var foo = new Foo(1, 2)')
 
-    foo = ctx.proxy('foo')
+    foo = ctx.proxy('foo').asobject()
     assert foo.x == 1
     assert foo.y == 2
     foo.x, foo.y = 10, 20
@@ -624,7 +624,7 @@ def test_custom_hooks_with_proxy():
 
     ctx['foo'] = Foo(Bar(10), Bar(20))
 
-    foo = ctx.proxy('foo')
+    foo = ctx.proxy('foo').asobject()
     assert isinstance(foo.x, Bar)
     assert isinstance(foo.y, Bar)
     assert foo.x.value == 10
