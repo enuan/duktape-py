@@ -846,3 +846,14 @@ def test_python_error():
     err_repr = str(error.getrepr())
     assert "PythonError(test.test_duktape.MyError)" in err_repr, err_repr
     assert error.value.args == ('test', )
+
+
+def test_push_js_proxy():
+    ctx = duktape.Context()
+    ctx.eval('foo = {a: 1}')
+    foo = ctx.proxy('foo')
+    ctx['bar'] = foo
+    ctx.eval('bar.b = 2')
+    assert foo['b'] == 2
+    assert ctx.eval('foo.b === 2')
+    assert ctx.eval('bar.b === 2')

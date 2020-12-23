@@ -819,6 +819,9 @@ cdef to_js(Context pyctx, value):
     elif isinstance(value, PyFunc):
         to_js_func(pyctx, value)
         return
+    elif isinstance(value, (JsArray, JsObject, JsDict)):
+        (<JsProxy>value._proxy).push_proxy_ref()
+        return
     elif pyctx.to_js_hook:
         to_js_hook_result = pyctx.to_js_hook(value, JsNew)
         if to_js_hook_result:
