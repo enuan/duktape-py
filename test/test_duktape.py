@@ -427,6 +427,16 @@ def test_push_datetime():
     assert ctx['dt_ny'] == ny_dt.astimezone(pytz.utc).replace(tzinfo=None)
 
 
+def test_pushed_datetime_not_proxied():
+    ctx = duktape.Context()
+    ctx.eval('var foo = {}')
+    foo = ctx.proxy('foo')
+    now = datetime.datetime.now()
+    foo['dt'] = now
+    assert isinstance(foo['dt'], datetime.datetime)
+    assert foo['dt'] == now
+
+
 def test_obj_proxy_asobject():
     ctx = duktape.Context()
     ctx.eval('var foo = {a: 1, b: 2, c:3};')

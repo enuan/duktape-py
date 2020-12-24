@@ -731,6 +731,10 @@ cdef to_js_date(Context pyctx, value):
     cduk.duk_push_c_function(ctx, js_date_proxy_get_handler, 3)         # [ ... date handler get_handler ]
     cduk.duk_put_prop_string(ctx, -2, "get")                            # [ ... date handler ]
     cduk.duk_push_proxy(ctx, 0)                                         # [ ... proxy ]
+    cduk.duk_get_global_string(ctx, b"Date")                            # [ ... proxy Date ]
+    cduk.duk_get_prop_string(ctx, -1, b"prototype")                     # [ ... proxy Date proto ]
+    cduk.duk_set_prototype(ctx, -3)                                     # [ ... proxy Date ]
+    cduk.duk_pop(ctx)                                                   # [ ... proxy ]
 
 
 cdef cduk.duk_ret_t js_date_proxy_get_handler(cduk.duk_context *ctx):
