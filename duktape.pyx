@@ -584,7 +584,7 @@ cdef to_python(Context pyctx, cduk.duk_idx_t idx):
             cduk.duk_pop(ctx)
             return Error(message)
         elif instanceof("Date"):
-            cduk.duk_get_prop_string(pyctx.ctx, -1, DUK_HIDDEN_SYMBOL(b'epoch_usec'))
+            cduk.duk_get_prop_string(ctx, -1, DUK_HIDDEN_SYMBOL(b'epoch_usec'))
             if not cduk.duk_is_undefined(ctx, -1):
                 epoch_s = struct.unpack('q', to_python_bytes(pyctx, -1))[0] / 1e6
                 cduk.duk_pop(ctx)
@@ -594,7 +594,19 @@ cdef to_python(Context pyctx, cduk.duk_idx_t idx):
                 cduk.duk_pcall_prop(ctx, -2, 0)
                 epoch_s = cduk.duk_get_number(ctx, idx) / 1e3
                 cduk.duk_pop(ctx)
-            return datetime.datetime.utcfromtimestamp(epoch_s)
+            cduk.duk_get_prop_string(ctx, -1, DUK_HIDDEN_SYMBOL(b"dt_type"))
+            if not cduk.duk_is_undefined(ctx, -1):
+                dt_type = force_unicode(cduk.duk_to_string(ctx, -1))
+                cduk.duk_pop(ctx)
+            else:
+                dt_type = 'datetime'
+            dt = datetime.datetime.utcfromtimestamp(epoch_s)
+            if dt_type == 'date':
+                return dt.date()
+            elif dt_type == 'time':
+                return dt.time()
+            else:
+                return dt
         else:
             dct = to_python_dict(pyctx, idx)
             if pyctx.to_py_hook:
@@ -715,18 +727,23 @@ cdef to_js_date(Context pyctx, value):
         if value.tzinfo:
             # otherwise we localize to UTC
             value = value.astimezone(pytz.utc).replace(tzinfo=None)
+        dt_type = 'datetime'
     elif isinstance(value, datetime.date):
         # push date as YYYY-MM-DD 00:00:00
         value = datetime.datetime.combine(value, datetime.time.min)
+        dt_type = 'date'
     elif isinstance(value, datetime.time):
         # push time as 1970-01-01 HH:MM:SS
         value = datetime.datetime.combine(UNIX_EPOCH.date(), value)
+        dt_type = 'time'
     epoch_usec = to_epoch_usec(value)
     cduk.duk_get_global_string(ctx, b"Date")                            # [ ... Date ]
     cduk.duk_push_number(ctx, epoch_usec/1e3)                           # [ ... Date epoch_s ]
     duk_reraise(pyctx, cduk.duk_pnew(ctx, 1))                           # [ ... date ]
     cduk.duk_push_lstring(ctx, <bytes>struct.pack('q', epoch_usec), 8)  # [ ... date usec]
     cduk.duk_put_prop_string(ctx, -2, DUK_HIDDEN_SYMBOL(b'epoch_usec')) # [ ... date ]
+    cduk.duk_push_string(ctx, smart_str(dt_type))                       # [ ... date dt_type ]
+    cduk.duk_put_prop_string(ctx, -2, DUK_HIDDEN_SYMBOL(b'dt_type'))    # [ ... date ]
     cduk.duk_push_object(ctx)                                           # [ ... date handler ]
     cduk.duk_push_c_function(ctx, js_date_proxy_get_handler, 3)         # [ ... date handler get_handler ]
     cduk.duk_put_prop_string(ctx, -2, "get")                            # [ ... date handler ]
@@ -778,6 +795,7 @@ cdef cduk.duk_ret_t js_date_proxy_set_wrapper(cduk.duk_context *ctx):
     cduk.duk_pop(ctx)
     cduk.duk_pcall_prop(ctx, 0, nargs)
     cduk.duk_del_prop_string(ctx, 0, DUK_HIDDEN_SYMBOL(b'epoch_usec'))
+    cduk.duk_del_prop_string(ctx, 0, DUK_HIDDEN_SYMBOL(b'dt_type'))
 
     return 1
 

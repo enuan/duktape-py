@@ -411,18 +411,26 @@ def test_push_datetime():
     assert ctx['dt'] == datetime.datetime(2019, 11, 10, 20, 30, 15, 123000)
 
     ctx['d'] = datetime.date(2019, 11, 19)
-    ctx.eval('dt.toISOString()') == '2019-11-19T00:00:00.000Z'
+    assert ctx.eval('d.toISOString()') == '2019-11-19T00:00:00.000Z'
+    assert ctx['d'] == datetime.date(2019, 11, 19)
+    ctx.eval('d.setTime(d.getTime())')
+    assert ctx.eval('d.toISOString()') == '2019-11-19T00:00:00.000Z'
+    # once modified a date will come back as a datetime
     assert ctx['d'] == datetime.datetime(2019, 11, 19)
 
     ctx['t'] = datetime.time(20, 30, 15, 123456)
-    ctx.eval('dt.toISOString()') == '1970-01-01T20:30:15.123Z'
-    assert ctx['t'] == datetime.datetime(1970, 1, 1, 20, 30, 15, 123456)
+    assert ctx.eval('t.toISOString()') == '1970-01-01T20:30:15.123Z'
+    assert ctx['t'] == datetime.time(20, 30, 15, 123456)
+    ctx.eval('t.setTime(t.getTime())')
+    assert ctx.eval('t.toISOString()') == '1970-01-01T20:30:15.123Z'
+    # once modified a time will come back as a datetime
+    assert ctx['t'] == datetime.datetime(1970, 1, 1, 20, 30, 15, 123000)
 
     ny_tz = pytz.timezone('America/New_York')
     ny_dt = ny_tz.localize(datetime.datetime(2019, 11, 19, 10, 30, 15, 123456))
     ctx['dt_ny'] = ny_dt
     # date to js are ALWAYS in the UTC time zone
-    ctx.eval('dt_ny.toISOString()') == '2019-11-19T15:30:15.123Z'
+    assert ctx.eval('dt_ny.toISOString()') == '2019-11-19T15:30:15.123Z'
     # date to py are naive datetime ALWAYS in the UTC time zone
     assert ctx['dt_ny'] == ny_dt.astimezone(pytz.utc).replace(tzinfo=None)
 
