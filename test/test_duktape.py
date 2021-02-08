@@ -295,6 +295,15 @@ def test_cesu8_push_string():
     assert ctx['charCodeAt'](smile_emoji, 1) == 56832
     assert ctx['codePointAt'](smile_emoji, 0) == 128512
 
+    ctx['smile'] = smile_emoji
+    assert ctx.eval('smile.charCodeAt(0)') == 55357
+    assert ctx.eval('smile.charCodeAt(1)') == 56832
+    assert ctx.eval('smile.codePointAt(0)') == 128512
+    assert ctx['smile'] == smile_emoji
+
+    assert ctx.eval("'\uD83D\uDE00'") == smile_emoji
+    assert ctx.eval('String.fromCharCode(0x1f600)') == smile_emoji
+
 
 def test_thread_basic():
     ctx = duktape.Context()

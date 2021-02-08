@@ -13,6 +13,7 @@ import weakref
 from collections import defaultdict
 from libc.stdio cimport printf
 from libc.stdint cimport uintptr_t
+from libc.string cimport strlen
 
 import pytz
 
@@ -23,8 +24,40 @@ class Error(Exception):
     pass
 
 
-cdef force_unicode(b):
-    return b.decode()
+cdef force_unicode(bytes):
+    return unicode_decode_cesu8(bytes, strlen(bytes))
+
+
+cdef str unicode_decode_cesu8(const char* bytes, size_t length):
+    cdef size_t i
+    cdef const unsigned char *bytes2 = <const unsigned char *>bytes;
+    utf8_bytes = None
+    i = 0
+    while i < length:
+        if bytes2[i] == 0:
+            break
+
+        # CESU-8 surrogate pair?
+        # \xed[\xa0-\xaf][\x80-\xbf]\xed[\xb0-\xbf][\x80-\xbf]
+        if bytes2[i] == 0xed and i + 5 < length and \
+               0xa0 <= bytes2[i+1] <= 0xaf and \
+               0x80 <= bytes2[i+2] <= 0xbf and \
+           bytes2[i+3] == 0xed and \
+               0xb0 <= bytes2[i+4] <= 0xbf and \
+               0x80 <= bytes2[i+5] <= 0xbf:
+            if utf8_bytes is None:
+                utf8_bytes = bytearray(bytes2[:i])
+            # convert CESU-8 surrogate pair into UTF-8
+            utf8_bytes.append(0xf0 | (((bytes2[i+1]+1) & 0x1c) >> 2))
+            utf8_bytes.append(0x80 | (((bytes2[i+1]+1) & 0x03) << 4) | ((bytes2[i+2] & 0x3c) >> 2))
+            utf8_bytes.append(0x80 | ((bytes2[i+2] & 0x03) << 4) | (bytes2[i+4] & 0x0f))
+            utf8_bytes.append(bytes2[i+5])
+            i += 6
+        else:
+            if utf8_bytes is not None:
+                utf8_bytes.append(bytes2[i])
+            i += 1
+    return bytes.decode() if utf8_bytes is None else utf8_bytes.decode()
 
 
 cdef smart_str(s):
@@ -92,7 +125,8 @@ cdef duk_reraise(Context pyctx, cduk.duk_int_t rc):
         else:
             python_error = None
         exc = to_python(pyctx, -1)
-        stacktrace = force_unicode(cduk.duk_safe_to_stacktrace(pyctx.ctx, -1))
+        cduk.duk_safe_to_stacktrace(pyctx.ctx, -1)
+        stacktrace = to_python_string(pyctx.ctx, -1)
         cduk.duk_pop(pyctx.ctx)
         duk_error = Error(stacktrace)
         if python_error:
@@ -129,8 +163,8 @@ cdef cduk.duk_ret_t duk_resolve_module(cduk.duk_context *ctx):
     # [0]: module_id
     # [1]: parent_id
     #
-    module_id = force_unicode(cduk.duk_require_string(ctx, 0))
-    parent_id = force_unicode(cduk.duk_require_string(ctx, 1))
+    module_id = to_python_string(ctx, 0)
+    parent_id = to_python_string(ctx, 1)
 
     # node.js reference:
     #
@@ -144,7 +178,7 @@ cdef cduk.duk_ret_t duk_resolve_module(cduk.duk_context *ctx):
             # Context.load we set it as parent_id, this allows correctly
             # resolving any relative import for that file
             if cduk.duk_get_prop_string(ctx, -1, b'__duktape_loading_file__'):
-                parent_id = force_unicode(cduk.duk_require_string(ctx, -1))
+                parent_id = to_python_string(ctx, -1)
             cduk.duk_pop_n(ctx, 2)
         module_id_path = os.path.join(os.path.dirname(parent_id), module_id)
         module_file = load_as_file(module_id_path) or load_as_dir(module_id_path)
@@ -199,7 +233,7 @@ cdef cduk.duk_ret_t duk_load_module(cduk.duk_context *ctx):
     # [1]: exports
     # [2]: module
     #
-    resolved_id = force_unicode(cduk.duk_require_string(ctx, 0))
+    resolved_id = to_python_string(ctx, 0)
     if resolved_id.endswith('.json'):
         # treat a JSON file as an object
         cduk.duk_push_string(ctx, b"module.exports = ")
@@ -224,14 +258,15 @@ class PyFunc:
         self.nargs = nargs
 
 
-cdef to_python_string(Context pyctx, cduk.duk_idx_t idx):
-    return force_unicode(to_python_bytes(pyctx, idx))
-
-
-cdef to_python_bytes(Context pyctx, cduk.duk_idx_t idx):
-    cdef cduk.duk_context *ctx = pyctx.ctx
+cdef str to_python_string(cduk.duk_context *ctx, cduk.duk_idx_t idx):
     cdef cduk.duk_size_t strlen
-    cdef const char *buf = cduk.duk_get_lstring(ctx, idx, &strlen)
+    cdef const char *buf = cduk.duk_require_lstring(ctx, idx, &strlen)
+    return unicode_decode_cesu8(buf, strlen)
+
+
+cdef to_python_bytes(cduk.duk_context *ctx, cduk.duk_idx_t idx):
+    cdef cduk.duk_size_t strlen
+    cdef const char *buf = cduk.duk_require_lstring(ctx, idx, &strlen)
     return buf[:strlen]
 
 
@@ -551,7 +586,7 @@ cdef to_python(Context pyctx, cduk.duk_idx_t idx):
         num = float(cduk.duk_get_number(ctx, idx))
         return int(num) if num.is_integer() else num
     elif cduk.duk_is_string(ctx, idx):
-        return to_python_string(pyctx, idx)
+        return to_python_string(pyctx.ctx, idx)
     elif cduk.duk_is_array(ctx, idx):
         return to_python_list(pyctx, idx)
     elif cduk.duk_is_function(ctx, idx):
@@ -568,7 +603,7 @@ cdef to_python(Context pyctx, cduk.duk_idx_t idx):
 
         if instanceof("PythonError"):
             cduk.duk_get_prop_string(ctx, -1, DUK_HIDDEN_SYMBOL(b'exc_name'))
-            exc_name = to_python_string(pyctx, -1)
+            exc_name = to_python_string(ctx, -1)
             cduk.duk_pop(ctx)
             cduk.duk_get_prop_string(ctx, -1, b'args')
             args = to_python_list(pyctx, -1)
@@ -580,13 +615,13 @@ cdef to_python(Context pyctx, cduk.duk_idx_t idx):
             return getattr(importlib.import_module(module), exc_name)(*args)
         elif instanceof("Error"):
             cduk.duk_get_prop_string(ctx, -1, b'message')
-            message = to_python_string(pyctx, -1)
+            message = to_python_string(ctx, -1)
             cduk.duk_pop(ctx)
             return Error(message)
         elif instanceof("Date"):
             cduk.duk_get_prop_string(ctx, -1, DUK_HIDDEN_SYMBOL(b'epoch_usec'))
             if not cduk.duk_is_undefined(ctx, -1):
-                epoch_s = struct.unpack('q', to_python_bytes(pyctx, -1))[0] / 1e6
+                epoch_s = struct.unpack('q', to_python_bytes(ctx, -1))[0] / 1e6
                 cduk.duk_pop(ctx)
             else:
                 cduk.duk_pop(ctx)
@@ -596,7 +631,7 @@ cdef to_python(Context pyctx, cduk.duk_idx_t idx):
                 cduk.duk_pop(ctx)
             cduk.duk_get_prop_string(ctx, -1, DUK_HIDDEN_SYMBOL(b"dt_type"))
             if not cduk.duk_is_undefined(ctx, -1):
-                dt_type = force_unicode(cduk.duk_to_string(ctx, -1))
+                dt_type = to_python_string(ctx, -1)
                 cduk.duk_pop(ctx)
             else:
                 dt_type = 'datetime'
@@ -886,7 +921,7 @@ cdef cduk.duk_ret_t python_error_constructor(cduk.duk_context *ctx):
     cduk.duk_push_this(ctx)
     cduk.duk_dup(ctx, 0)
     cduk.duk_put_prop_string(ctx, -2, DUK_HIDDEN_SYMBOL(b'exc_name'))
-    name = to_python_string(pyctx, 0)
+    name = to_python_string(ctx, 0)
     cduk.duk_push_string(ctx, smart_str(f"PythonError({name})"))
     cduk.duk_put_prop_string(ctx, -2, b"name")
     cduk.duk_dup(ctx, 1)
