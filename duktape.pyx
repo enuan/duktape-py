@@ -64,28 +64,29 @@ cdef smart_str(s):
     return unicode_encode_cesu8(s) if isinstance(s, str) else s
 
 
-cdef unicode_encode_cesu8(ustring):
+cdef unicode_encode_cesu8(str ustring):
     # python transposition of duk_unicode_encode_cesu8(duk_ucodepoint_t cp, duk_uint8_t *out)
+    cdef unsigned long x
     out = bytearray()
     for uchar in ustring:
         x = ord(uchar)
         if x < 0x80:
             out.append(x)
         elif x < 0x800:
-            out.extend([0xc0 + ((x >> 6) & 0x1f),
-                        0x80 + (x & 0x3f)])
+            out.append(0xc0 + ((x >> 6) & 0x1f))
+            out.append(0x80 + (x & 0x3f))
         elif x < 0x10000:
-            out.extend([0xe0 + ((x >> 12) & 0x0f),
-                        0x80 + ((x >> 6) & 0x3f),
-                        0x80 + (x & 0x3f)])
+            out.append(0xe0 + ((x >> 12) & 0x0f))
+            out.append(0x80 + ((x >> 6) & 0x3f))
+            out.append(0x80 + (x & 0x3f))
         else:
             x -= 0x10000
-            out.extend([0xed,
-                        0xa0 + ((x >> 16) & 0x0f),
-                        0x80 + ((x >> 10) & 0x3f),
-                        0xed,
-                        0xb0 + ((x >> 6) & 0x0f),
-                        0x80 + (x & 0x3f)])
+            out.append(0xed)
+            out.append(0xa0 + ((x >> 16) & 0x0f))
+            out.append(0x80 + ((x >> 10) & 0x3f))
+            out.append(0xed)
+            out.append(0xb0 + ((x >> 6) & 0x0f))
+            out.append(0x80 + (x & 0x3f))
     return out
 
 
