@@ -851,10 +851,7 @@ cdef to_js(Context pyctx, value):
         else:
             cduk.duk_push_false(ctx)
         return
-    elif isinstance(value, int):
-        cduk.duk_push_int(ctx, value)
-        return
-    elif isinstance(value, float):
+    elif isinstance(value, (int, float)):
         cduk.duk_push_number(ctx, value)
         return
     elif isinstance(value, (list, tuple)):
