@@ -575,6 +575,53 @@ cdef class JsFunc(JsProxy):
             self.pop_proxy_ref()
 
 
+cdef class ToPyHelper:
+
+    cdef Context pyctx
+    cdef cduk.duk_idx_t idx
+    cdef object isconstructor
+    cdef object name
+
+    def __init__(self, Context pyctx, cduk.duk_idx_t idx):
+        self.pyctx = pyctx
+        self.idx = cduk.duk_normalize_index(pyctx.ctx, idx)
+        cduk.duk_get_prop_string(pyctx.ctx, self.idx, b'prototype')
+        if cduk.duk_is_undefined(pyctx.ctx, -1):
+            cduk.duk_get_prop_string(pyctx.ctx, self.idx, b'constructor')
+            self.isconstructor = False
+            cduk.duk_get_prop_string(pyctx.ctx, -1, b'name')
+        else:
+            cduk.duk_get_prop_string(pyctx.ctx, -1, b'constructor')
+            self.isconstructor = bool(cduk.duk_strict_equals(pyctx.ctx, self.idx, -1))
+            cduk.duk_get_prop_string(pyctx.ctx, self.idx, b'name')
+        self.name = to_python_string(pyctx.ctx, -1)
+        cduk.duk_pop_n(pyctx.ctx, 3)
+
+    @property
+    def isconstructor(self):
+        return self.isconstructor
+
+    @property
+    def name(self):
+        return self.name
+
+    def instanceof(self, name):
+        if not duk_get_global_dotted_string(self.pyctx, smart_str(name)):
+            return False
+        try:
+            return bool(cduk.duk_instanceof(self.pyctx.ctx, self.idx, -1))
+        finally:
+            cduk.duk_pop(self.pyctx.ctx)
+
+    def equals(self, name):
+        if not duk_get_global_dotted_string(self.pyctx, smart_str(name)):
+            return False
+        try:
+            return bool(cduk.duk_strict_equals(self.pyctx.ctx, self.idx, -1))
+        finally:
+            cduk.duk_pop(self.pyctx.ctx)
+
+
 cdef to_python(Context pyctx, cduk.duk_idx_t idx):
     cdef cduk.duk_context *ctx = pyctx.ctx
     if cduk.duk_is_boolean(ctx, idx):
@@ -590,19 +637,10 @@ cdef to_python(Context pyctx, cduk.duk_idx_t idx):
         return to_python_string(pyctx.ctx, idx)
     elif cduk.duk_is_array(ctx, idx):
         return to_python_list(pyctx, idx)
-    elif cduk.duk_is_function(ctx, idx):
-        return to_python_proxy(pyctx, idx)
     elif cduk.duk_is_object(ctx, idx):
-        def instanceof(name):
-            norm_idx = cduk.duk_normalize_index(ctx, idx)
-            if not duk_get_global_dotted_string(pyctx, smart_str(name)):
-                return False
-            try:
-                return bool(cduk.duk_instanceof(ctx, norm_idx, -1))
-            finally:
-                cduk.duk_pop(ctx)
-
-        if instanceof("PythonError"):
+        helper = ToPyHelper(pyctx, idx)
+        dct = to_python_dict(pyctx, idx)
+        if helper.instanceof("PythonError"):
             cduk.duk_get_prop_string(ctx, -1, DUK_HIDDEN_SYMBOL(b'exc_name'))
             exc_name = to_python_string(ctx, -1)
             cduk.duk_pop(ctx)
@@ -614,12 +652,12 @@ cdef to_python(Context pyctx, cduk.duk_idx_t idx):
             except ValueError:
                 module = 'builtins'
             return getattr(importlib.import_module(module), exc_name)(*args)
-        elif instanceof("Error"):
+        elif helper.instanceof("Error"):
             cduk.duk_get_prop_string(ctx, -1, b'message')
             message = to_python_string(ctx, -1)
             cduk.duk_pop(ctx)
             return Error(message)
-        elif instanceof("Date"):
+        elif helper.instanceof("Date"):
             cduk.duk_get_prop_string(ctx, -1, DUK_HIDDEN_SYMBOL(b'epoch_usec'))
             if not cduk.duk_is_undefined(ctx, -1):
                 epoch_s = struct.unpack('q', to_python_bytes(ctx, -1))[0] / 1e6
@@ -643,13 +681,14 @@ cdef to_python(Context pyctx, cduk.duk_idx_t idx):
                 return dt.time()
             else:
                 return dt
-        else:
-            dct = to_python_dict(pyctx, idx)
-            if pyctx.to_py_hook:
-                to_py_hook_result = pyctx.to_py_hook(dct, instanceof)
-                if to_py_hook_result:
-                    return to_py_hook_result
-            return dct
+        elif not duk_is_plain_object(pyctx, idx) and pyctx.to_py_hook:
+            try:
+                return pyctx.to_py_hook(dct, helper)
+            except TypeError:
+                pass
+        if cduk.duk_is_function(ctx, idx):
+            return to_python_proxy(pyctx, idx)
+        return dct
 
     return 'unknown'
     # raise TypeError("not_coercible", cduk.duk_get_type(ctx, idx))
@@ -865,7 +904,7 @@ cdef to_js(Context pyctx, value):
                             datetime.time)):
         to_js_date(pyctx, value)
         return
-    elif isinstance(value, JsNew):
+    elif isinstance(value, JsType):
         value(pyctx)
         return
     elif callable(value):
@@ -878,10 +917,11 @@ cdef to_js(Context pyctx, value):
         (<JsProxy>value._proxy).push_proxy_ref()
         return
     elif pyctx.to_js_hook:
-        to_js_hook_result = pyctx.to_js_hook(value, JsNew)
-        if to_js_hook_result:
-            to_js(pyctx, to_js_hook_result)
+        try:
+            to_js(pyctx, pyctx.to_js_hook(value, ToJsHelper()))
             return
+        except TypeError:
+            pass
 
     if isinstance(value, BaseException):
         exc_type = type(value)
@@ -892,18 +932,36 @@ cdef to_js(Context pyctx, value):
         to_js(pyctx, JsNew("PythonError", exc_name, str(value), value.args))
         return
 
-    raise TypeError("to_js failed for %s" % value.__class__.__name__)
+    raise TypeError("to_js failed for %s: %r" % (value.__class__.__name__, value))
 
 
-class JsNew:
+class ToJsHelper:
+
+    def new(self, name, *args):
+        return JsNew(name, *args)
+
+    def type(self, name):
+        return JsType(name)
+
+
+class JsType:
+
+    def __init__(self, name):
+        self.name = name
+
+    def __call__(self, Context pyctx):
+        if not duk_get_global_dotted_string(pyctx, smart_str(self.name)):
+            raise ValueError("'%s' is undefined" % self.name)
+
+
+class JsNew(JsType):
 
     def __init__(self, name, *args):
         self.name = name
         self.args = args
 
     def __call__(self, Context pyctx):
-        if not duk_get_global_dotted_string(pyctx, smart_str(self.name)):
-            raise ValueError("'%s' is undefined" % self.name)
+        super().__call__(pyctx)
         for arg in self.args:
             to_js(pyctx, arg)
         duk_reraise(pyctx, cduk.duk_pnew(pyctx.ctx, len(self.args)))

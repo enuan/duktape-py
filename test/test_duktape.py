@@ -589,20 +589,20 @@ class FooBar(object): pass
 
 def init_ctx_with_hooks():
 
-    def to_js(obj, new):
+    def to_js(obj, helper):
         if isinstance(obj, Foo):
-            return new('ns.Foo', obj.x, obj.y)
+            return helper.new('ns.Foo', obj.x, obj.y)
         elif isinstance(obj, Bar):
-            return new('ns.Bar', obj.value)
+            return helper.new('ns.Bar', obj.value)
         elif isinstance(obj, FooBar):
-            return new('ns.FooBar')
+            return helper.new('ns.FooBar')
 
-    def to_py(obj, instanceof):
-        if instanceof('ns.FooBar'):
+    def to_py(obj, helper):
+        if helper.instanceof('ns.FooBar'):
             raise ValueError('should never pass')
-        elif instanceof('ns.Foo'):
+        elif helper.instanceof('ns.Foo'):
             return Foo(**obj)
-        elif instanceof('ns.Bar'):
+        elif helper.instanceof('ns.Bar'):
             return Bar(**obj)
 
     ctx = duktape.Context(to_js_hook=to_js,
@@ -687,12 +687,12 @@ def test_custom_hooks_for_exceptions():
         def __init__(self, x):
             self.x = x
 
-    def to_js(obj, new):
+    def to_js(obj, helper):
         if isinstance(obj, FooError):
-            return new('FooError', obj.x)
+            return helper.new('FooError', obj.x)
 
-    def to_py(obj, instanceof):
-        if instanceof('FooError'):
+    def to_py(obj, helper):
+        if helper.instanceof('FooError'):
             return FooError(obj['x'])
         return obj
 
