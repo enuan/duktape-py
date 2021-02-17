@@ -405,7 +405,10 @@ class JsObject(object):
         return list(self._proxy.keys())
 
     def __getattr__(self, k):
-        return self._proxy.getitem(k)
+        try:
+            return self._proxy.getitem(k)
+        except KeyError:
+            raise AttributeError(k)
     __getitem__ = __getattr__
 
     def __setattr__(self, k, v):
@@ -413,7 +416,10 @@ class JsObject(object):
     __setitem__ = __setattr__
 
     def __delattr__(self, k):
-        self._proxy.delitem(k)
+        try:
+            self._proxy.delitem(k)
+        except KeyError:
+            raise AttributeError(k)
     __delitem__ = __delattr__
 
 
@@ -449,7 +455,8 @@ cdef class ObjectProxy(JsProxy):
 
     @push_and_pop_proxy
     def getitem(self, key):
-        cduk.duk_get_prop_string(self.pyctx.ctx, -1, smart_str(key))
+        if not cduk.duk_get_prop_string(self.pyctx.ctx, -1, smart_str(key)):
+            raise KeyError(key)
         try:
             return to_python_proxy(self.pyctx, -1)
         except TypeError:
@@ -464,6 +471,8 @@ cdef class ObjectProxy(JsProxy):
 
     @push_and_pop_proxy
     def delitem(self, key):
+        if not cduk.duk_has_prop_string(self.pyctx.ctx, -1, smart_str(key)):
+            raise KeyError(key)
         cduk.duk_del_prop_string(self.pyctx.ctx, -1, smart_str(key))
 
     def keys(self):

@@ -467,6 +467,11 @@ def test_obj_proxy_asobject():
     assert foo['e'] == 5
     assert foo.e == 5
 
+    with pytest.raises(AttributeError):
+        foo.f
+    with pytest.raises(AttributeError):
+        del foo.f
+
 
 def test_obj_proxy():
     ctx = duktape.Context()
@@ -481,6 +486,12 @@ def test_obj_proxy():
     assert foo['e'] == 5
     assert foo == {'a': 1, 'b': 2, 'c': 3, 'd': 4, 'e': 5}
 
+    with pytest.raises(KeyError):
+        foo['f']
+    with pytest.raises(KeyError):
+        del foo['f']
+    with pytest.raises(KeyError):
+        foo.pop('f')
 
 def test_array_proxy():
     ctx = duktape.Context()
