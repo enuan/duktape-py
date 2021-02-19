@@ -694,37 +694,38 @@ def test_custom_hooks_with_proxy():
 
 def test_custom_hooks_for_exceptions():
 
-    class FooError(Exception):
+    class CustomError(Exception):
         def __init__(self, x):
             self.x = x
 
     def to_js(obj, helper):
-        if isinstance(obj, FooError):
-            return helper.new('FooError', obj.x)
+        if isinstance(obj, CustomError):
+            return helper.new('CustomError', obj.x)
 
     def to_py(obj, helper):
-        if helper.instanceof('FooError'):
-            return FooError(obj['x'])
+        if helper.instanceof('CustomError'):
+            return CustomError(obj['x'])
         return obj
 
     ctx = duktape.Context(to_js_hook=to_js,
                           to_py_hook=to_py)
-    ctx.eval("""var FooError = function(x) {
+    ctx.eval("""var CustomError = function(x) {
         this.x = x;
-    }""")
+    };
+    CustomError.prototype = Object.create(Error.prototype);""")
 
-    with pytest.raises(FooError) as error:
-        ctx.eval("throw (new FooError('foo'))")
+    with pytest.raises(CustomError) as error:
+        ctx.eval("throw (new CustomError('foo'))")
     assert error.value.x == 'foo'
 
     def raise_foo_error(x):
-        raise FooError(x)
+        raise CustomError(x)
     ctx['raise'] = raise_foo_error
 
     ctx.eval("""try {
         raise('bar');
     } catch (e) {
-        if (e instanceof FooError) {
+        if (e instanceof CustomError) {
             foo_err = e.x;
         }
     }""")

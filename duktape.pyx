@@ -649,7 +649,9 @@ cdef to_python(Context pyctx, cduk.duk_idx_t idx):
     elif cduk.duk_is_object(ctx, idx):
         helper = ToPyHelper(pyctx, idx)
         dct = to_python_dict(pyctx, idx)
-        if helper.instanceof("PythonError"):
+        if duk_is_plain_object(pyctx, idx):
+            return dct
+        elif helper.instanceof("PythonError"):
             cduk.duk_get_prop_string(ctx, -1, DUK_HIDDEN_SYMBOL(b'exc_name'))
             exc_name = to_python_string(ctx, -1)
             cduk.duk_pop(ctx)
@@ -661,11 +663,6 @@ cdef to_python(Context pyctx, cduk.duk_idx_t idx):
             except ValueError:
                 module = 'builtins'
             return getattr(importlib.import_module(module), exc_name)(*args)
-        elif helper.instanceof("Error"):
-            cduk.duk_get_prop_string(ctx, -1, b'message')
-            message = to_python_string(ctx, -1)
-            cduk.duk_pop(ctx)
-            return Error(message)
         elif helper.instanceof("Date"):
             cduk.duk_get_prop_string(ctx, -1, DUK_HIDDEN_SYMBOL(b'epoch_usec'))
             if not cduk.duk_is_undefined(ctx, -1):
@@ -690,14 +687,21 @@ cdef to_python(Context pyctx, cduk.duk_idx_t idx):
                 return dt.time()
             else:
                 return dt
-        elif not duk_is_plain_object(pyctx, idx) and pyctx.to_py_hook:
+        elif pyctx.to_py_hook:
             try:
                 return pyctx.to_py_hook(dct, helper)
             except TypeError:
                 pass
-        if cduk.duk_is_function(ctx, idx):
+
+        if helper.instanceof("Error"):
+            cduk.duk_get_prop_string(ctx, -1, b'message')
+            message = to_python_string(ctx, -1)
+            cduk.duk_pop(ctx)
+            return Error(message)
+        elif cduk.duk_is_function(ctx, idx):
             return to_python_proxy(pyctx, idx)
-        return dct
+        else:
+            return dct
 
     return 'unknown'
     # raise TypeError("not_coercible", cduk.duk_get_type(ctx, idx))
