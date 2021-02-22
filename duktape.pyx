@@ -1014,8 +1014,8 @@ cdef cduk.duk_ret_t thread_only_constructor(cduk.duk_context *ctx):
         cduk.duk_push_object(ctx)
     target_id = hex(<uintptr_t>cduk.duk_get_heapptr(ctx, -1))
     cduk.duk_dup(ctx, 0)
-    cduk.duk_put_prop_string(ctx, -2, DUK_HIDDEN_SYMBOL(b'type'))
-    cduk.duk_get_prop_string(ctx, 0, b'name')
+    cduk.duk_put_prop_string(ctx, -2, DUK_HIDDEN_SYMBOL(b'constructor'))
+    cduk.duk_dup(ctx, 1)
     cduk.duk_put_prop_string(ctx, -2, DUK_HIDDEN_SYMBOL(b'name'))
     cduk.duk_push_string(ctx, smart_str(target_id))
     cduk.duk_put_prop_string(ctx, -2, DUK_HIDDEN_SYMBOL(b'id'))
@@ -1041,7 +1041,13 @@ cdef cduk.duk_ret_t thread_only_get_handler(cduk.duk_context *ctx):
     cduk.duk_get_prop(ctx, -2)
     if cduk.duk_is_undefined(ctx, -1):
         cduk.duk_pop(ctx)
-        cduk.duk_generic_error(ctx, smart_str("ThreadOnly has not been initialized!"))
+        cduk.duk_get_prop_string(ctx, 0, DUK_HIDDEN_SYMBOL(b'name'))
+        if cduk.duk_is_undefined(ctx, -1):
+            name = 'ThreadOnly'
+        else:
+            name = repr(to_python_string(ctx, -1))
+        cduk.duk_pop(ctx)
+        cduk.duk_generic_error(ctx, smart_str("%s has not been initialized!" % name))
         return 1
 
     local_idx = cduk.duk_normalize_index(ctx, -1)
@@ -1068,7 +1074,13 @@ cdef cduk.duk_ret_t thread_only_set_handler(cduk.duk_context *ctx):
     cduk.duk_get_prop(ctx, -2)
     if cduk.duk_is_undefined(ctx, -1):
         cduk.duk_pop(ctx)
-        cduk.duk_generic_error(ctx, smart_str("ThreadOnly has not been initialized!"))
+        cduk.duk_get_prop_string(ctx, 0, DUK_HIDDEN_SYMBOL(b'name'))
+        if cduk.duk_is_undefined(ctx, -1):
+            name = 'ThreadOnly'
+        else:
+            name = repr(to_python_string(ctx, -1))
+        cduk.duk_pop(ctx)
+        cduk.duk_generic_error(ctx, smart_str("%s has not been initialized!" % name))
         return 1
 
     cduk.duk_dup(ctx, 1)
@@ -1163,7 +1175,7 @@ cdef class Context:
         cduk.duk_put_global_string(self.ctx, b"PythonError")
 
         # ThreadOnly constructor
-        cduk.duk_push_c_function(self.ctx, thread_only_constructor, 1)
+        cduk.duk_push_c_function(self.ctx, thread_only_constructor, 2)
         cduk.duk_push_object(self.ctx)
         cduk.duk_put_prop_string(self.ctx, -2, b"prototype")
         cduk.duk_put_global_string(self.ctx, b"ThreadOnly")
@@ -1327,10 +1339,11 @@ cdef class ThreadContext(Context):
         cduk.duk_resume(self.ctx, &state.ts)
 
     def init_thread_only(self, key, *args):
-        duk_get_global_dotted_string(self, smart_str(key))
+        if not duk_get_global_dotted_string(self, smart_str(key)):
+            raise RuntimeError("ThreadOnly %r does not exist!" % key)
         cduk.duk_push_thread_stash(self.ctx, self.ctx)
         cduk.duk_get_prop_string(self.ctx, -2, DUK_HIDDEN_SYMBOL(b'id'))
-        cduk.duk_get_prop_string(self.ctx, 0, DUK_HIDDEN_SYMBOL(b'type'))
+        cduk.duk_get_prop_string(self.ctx, 0, DUK_HIDDEN_SYMBOL(b'constructor'))
         for arg in args:
             to_js(self, arg)
         duk_reraise(self, cduk.duk_pnew(self.ctx, len(args)))
