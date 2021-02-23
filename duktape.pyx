@@ -1042,10 +1042,7 @@ cdef cduk.duk_ret_t thread_only_get_handler(cduk.duk_context *ctx):
     if cduk.duk_is_undefined(ctx, -1):
         cduk.duk_pop(ctx)
         cduk.duk_get_prop_string(ctx, 0, DUK_HIDDEN_SYMBOL(b'name'))
-        if cduk.duk_is_undefined(ctx, -1):
-            name = 'ThreadOnly'
-        else:
-            name = repr(to_python_string(ctx, -1))
+        name = 'ThreadOnly' if cduk.duk_is_undefined(ctx, -1) else to_python_string(ctx, -1)
         cduk.duk_pop(ctx)
         cduk.duk_generic_error(ctx, smart_str("%s has not been initialized!" % name))
         return 1
@@ -1075,10 +1072,7 @@ cdef cduk.duk_ret_t thread_only_set_handler(cduk.duk_context *ctx):
     if cduk.duk_is_undefined(ctx, -1):
         cduk.duk_pop(ctx)
         cduk.duk_get_prop_string(ctx, 0, DUK_HIDDEN_SYMBOL(b'name'))
-        if cduk.duk_is_undefined(ctx, -1):
-            name = 'ThreadOnly'
-        else:
-            name = repr(to_python_string(ctx, -1))
+        name = 'ThreadOnly' if cduk.duk_is_undefined(ctx, -1) else to_python_string(ctx, -1)
         cduk.duk_pop(ctx)
         cduk.duk_generic_error(ctx, smart_str("%s has not been initialized!" % name))
         return 1
