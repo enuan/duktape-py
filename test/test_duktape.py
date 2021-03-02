@@ -758,7 +758,7 @@ def test_thread_only():
 
     with pytest.raises(duktape.Error) as error:
         ctx.eval('foo.x')
-    assert "'foo' has not been initialized" in str(error.value)
+    assert "foo has not been initialized" in str(error.value)
 
     th1 = ctx.new_thread(False)
     th1_state = th1.suspend()
@@ -768,7 +768,7 @@ def test_thread_only():
     th1.resume(th1_state)
     with pytest.raises(duktape.Error) as error:
         th1.eval('foo.x')
-    assert "'foo' has not been initialized" in str(error.value)
+    assert "foo has not been initialized" in str(error.value)
     th1.init_thread_only('foo', 'bob')
     assert th1.eval('foo.x == "bob"')
     assert th1.eval('foo.bar() == "bob"')
@@ -777,7 +777,7 @@ def test_thread_only():
     th2.resume(th2_state)
     with pytest.raises(duktape.Error) as error:
         th2.eval('foo.x')
-    assert "'foo' has not been initialized" in str(error.value)
+    assert "foo has not been initialized" in str(error.value)
     th2.init_thread_only('foo', 'alice')
     assert th2.eval('foo.x == "alice"')
     assert th2.eval('foo.bar() == "alice"')

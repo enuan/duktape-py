@@ -455,9 +455,9 @@ cdef class ObjectProxy(JsProxy):
 
     @push_and_pop_proxy
     def getitem(self, key):
-        if not cduk.duk_get_prop_string(self.pyctx.ctx, -1, smart_str(key)):
-            raise KeyError(key)
         try:
+            if not cduk.duk_get_prop_string(self.pyctx.ctx, -1, smart_str(key)):
+                raise KeyError(key)
             return to_python_proxy(self.pyctx, -1)
         except TypeError:
             return to_python(self.pyctx, -1)
@@ -1342,6 +1342,7 @@ cdef class ThreadContext(Context):
             to_js(self, arg)
         duk_reraise(self, cduk.duk_pnew(self.ctx, len(args)))
         cduk.duk_put_prop(self.ctx, -3)
+        cduk.duk_pop_n(self.ctx, 2)
 
 
 cdef class ThreadState(object):
